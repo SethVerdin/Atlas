@@ -1,0 +1,86 @@
+{
+  "_about": "The THIRD Gemini call within one /v1/chat turn, for the message '2 scrambled eggs and a slice of my mom's banana bread'. systemInstruction and tools are abbreviated (see src/agent). fdcIds and USDA values are illustrative, not real lookups.",
+
+  "systemInstruction": { "parts": [{ "text": "<SYSTEM_PROMPT from src/agent/systemPrompt.ts>" }] },
+  "tools": "<TOOL_DECLARATIONS from src/agent/tools.ts>",
+  "generationConfig": { "temperature": 0.4, "maxOutputTokens": 800 },
+
+  "contents": [
+    {
+      "role": "user",
+      "parts": [{ "text": "bench press 3x8 at 185" }]
+    },
+    {
+      "role": "model",
+      "parts": [{ "text": "Drafted: Bench Press, 3 sets of 8 at 185 lb. Review it and tap Save." }]
+    },
+
+    {
+      "role": "user",
+      "parts": [{ "text": "[Session context, provided by the app]\nLocal time: 2026-10-08, 08:14 (America/New_York)\nUnits: lb\nDaily goals: 2400 kcal, 160 g protein\n[End session context]\n\n2 scrambled eggs and a slice of my mom's banana bread" }]
+    },
+
+    {
+      "_note": "Call 1 response: the model asks for two searches at once.",
+      "role": "model",
+      "parts": [
+        { "functionCall": { "name": "search_foods", "args": { "query": "scrambled egg" } } },
+        { "functionCall": { "name": "search_foods", "args": { "query": "banana bread homemade" } } }
+      ]
+    },
+    {
+      "_note": "The API ran both searches (cache first, then USDA) and returns the results.",
+      "role": "user",
+      "parts": [
+        { "functionResponse": { "name": "search_foods", "response": { "results": [
+          { "fdcId": 100001, "description": "Egg, whole, cooked, scrambled", "per100g": { "kcal": 149, "protein_g": 10.0, "carbs_g": 1.6, "fat_g": 11.0 } }
+        ] } } },
+        { "functionResponse": { "name": "search_foods", "response": { "results": [
+          { "fdcId": 100002, "description": "Bread, banana, commercially prepared, packaged", "per100g": { "kcal": 360, "protein_g": 4.8, "carbs_g": 52.0, "fat_g": 15.0 } }
+        ] } } }
+      ]
+    },
+
+    {
+      "_note": "Call 2 response: eggs match USDA. Homemade banana bread is a common recipe, so the model estimates it instead of using the packaged product. 1 slice is about 60 g.",
+      "role": "model",
+      "parts": [
+        { "functionCall": { "name": "draft_meal", "args": { "items": [
+          { "name": "Scrambled eggs", "grams": 122, "source": "usda", "fdcId": 100001 },
+          { "name": "Banana bread (homemade)", "grams": 60, "source": "estimate",
+            "estimatePer100g": { "kcal": 326, "protein_g": 4.3, "carbs_g": 54.6, "fat_g": 10.5 },
+            "estimateBasis": "typical homemade banana bread recipe" }
+        ] } } }
+      ]
+    },
+    {
+      "_note": "mealDraft.ts verified fdcId 100001 came from this turn's search, checked the estimate (about 330 kcal from its macros, close to 326), and computed totals. The same draft goes to the app as `draft`.",
+      "role": "user",
+      "parts": [
+        { "functionResponse": { "name": "draft_meal", "response": { "draft": {
+          "type": "meal",
+          "items": [
+            { "name": "Scrambled eggs", "grams": 122, "source": "usda", "fdcId": 100001,
+              "totals": { "kcal": 182, "protein_g": 12.2, "carbs_g": 2.0, "fat_g": 13.4 } },
+            { "name": "Banana bread (homemade)", "grams": 60, "source": "estimated",
+              "estimateBasis": "typical homemade banana bread recipe",
+              "totals": { "kcal": 196, "protein_g": 2.6, "carbs_g": 32.8, "fat_g": 6.3 } }
+          ],
+          "totals": { "kcal": 378, "protein_g": 14.8, "carbs_g": 34.8, "fat_g": 19.7 }
+        } } } }
+      ]
+    }
+  ],
+
+  "_expectedResponse": {
+    "candidates": [{
+      "content": { "role": "model", "parts": [{ "text": "Drafted breakfast: 2 scrambled eggs (USDA) and 1 slice of homemade banana bread (estimated, about 60 g). Adjust grams if needed, then tap Save." }] },
+      "finishReason": "STOP"
+    }]
+  },
+
+  "_storedAfterTurn": [
+    { "role": "user", "text": "2 scrambled eggs and a slice of my mom's banana bread" },
+    { "role": "model", "text": "Drafted breakfast: 2 scrambled eggs (USDA) and 1 slice of homemade banana bread (estimated, about 60 g). Adjust grams if needed, then tap Save." }
+  ]
+}
