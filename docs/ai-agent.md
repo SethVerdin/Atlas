@@ -85,6 +85,23 @@ returned it in the same turn.
   `{ reply }`. Errors return `{ error }` (400 bad input, 503 no `GEMINI_API_KEY`,
   502 Gemini failure).
   - It does **not** send tool declarations yet, because the tools aren't implemented.
+  - **Temporary "no tools" note.** `SYSTEM_PROMPT` tells Gemini to call tools
+    (`search_foods`, `get_nutrition_summary`, ...). Without tool declarations, Gemini
+    still tries and replies with a function call and no text, which the app showed as
+    "The AI didn't return an answer". So `chat.ts` appends `NO_TOOLS_NOTE` to the system
+    instruction. It tells Gemini to answer in plain text, give general advice (it can't
+    see the user's logs), never claim to have logged anything, and give labeled
+    estimates for meals, or ask one question when the food is too vague. **Remove
+    `NO_TOOLS_NOTE` when tools are sent.** If Gemini still attempts a call, the API
+    logs `attemptedTools` with the "Empty Gemini reply" warning.
+  - **Output cap.** `maxOutputTokens` (in `context.ts`) is 4096 because it counts
+    Gemini's internal thinking tokens as well as the reply. At 800, thinking (often
+    600+ tokens) left too little room, and replies were cut off mid-sentence. Reply
+    length is kept short by the prompt instead.
+  - **Timeout and errors.** Gemini gets 60 s; answers sometimes take 25+ s. Error
+    messages shown in the app: Google 429 (rate limit) and 503 (overloaded) → "The AI
+    is busy right now"; timeout → "The AI took too long"; anything else → "The AI
+    service returned an error". Google's full error is in the API log.
   - History comes from the app for now (no auth or stored messages yet).
 - **Not built yet:** the agent loop (tool calls), the tool implementations
   (`search_foods`, etc.), the USDA cache, auth, and storing chat history.
@@ -96,6 +113,9 @@ returned it in the same turn.
 
 ## Open items
 
+- Markdown in replies: Gemini answers in Markdown, but the Ask screen shows plain text,
+  so `**bold**` appears with asterisks. Either render Markdown in the app or tell
+  Gemini in the prompt to reply without Markdown.
 - Alcohol: the Atwater check rejects drinks (7 kcal/g alcohol). Add `alcohol_g` or exempt beverages.
 - An AI test set, per the evaluation's Testing Strategy: foods that should use USDA,
   foods that should be estimated, and foods that should trigger a follow-up.
