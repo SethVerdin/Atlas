@@ -1,0 +1,62 @@
+name: CI
+
+# Runs on every pull request (any target branch) and on pushes to main.
+# To block merges when a check fails, a repo admin marks the "api" and "app"
+# checks as required for main (see README > Continuous integration).
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  api:
+    name: api
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: api
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: api/package-lock.json
+      - run: npm ci
+      - name: Lint
+        run: npm run lint
+      - name: Type-check
+        run: npm run typecheck
+      - name: Build
+        run: npm run build
+      - name: Validate docker-compose.yml
+        working-directory: .
+        run: cp .env.example .env && docker compose config --quiet
+
+  app:
+    name: app
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - run: npm ci
+      - name: Lint
+        run: npm run lint
+      - name: Type-check
+        run: npm run typecheck
+      - name: Expo dependency check
+        run: npx expo-doctor
