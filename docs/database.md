@@ -3,9 +3,9 @@
 How the local PostgreSQL database is set up and what is in it. The setup lives in
 `docker-compose.yml` and the tables in `database/schema.sql`.
 
-For step-by-step setup commands, see the
-[Local database setup](../README.md#local-database-setup) section of the README. This
-page explains what you end up with.
+For the quick-start commands and troubleshooting, see the
+[Database](../README.md#database) section of the README. This page explains what you
+end up with.
 
 ## At a glance
 
@@ -13,15 +13,18 @@ page explains what you end up with.
 | --- | --- |
 | Database | PostgreSQL 15 (Docker image `postgres:15`) |
 | Container name | `atlas_db` |
-| Host port | **5433** (mapped to 5432 inside the container) |
-| Database name | `atlas` |
-| User | `postgres` |
-| Password | `DB_PASSWORD` from your local `.env` (git-ignored) |
+| Host port | **5433** by default (mapped to 5432 inside the container) |
+| Database name | `atlas` by default |
+| User | `postgres` by default |
+| Password | `DB_PASSWORD` from your local `.env` (required, git-ignored) |
 | Data storage | Docker volume `pgdata` |
 | Restart policy | `always` |
+| Health check | `pg_isready` every 2 seconds |
 
-The password is not stored in the repo. Without a `.env` file, Postgres starts with no
-password set.
+The port, database name, and user come from `DB_PORT`, `DB_NAME`, and `DB_USER` in
+`.env`. If you don't set them, the defaults above apply. `DB_PASSWORD` has no default:
+Docker refuses to start the database until it is set. `npm run setup` creates `.env`
+from `.env.example` for you.
 
 ## Tables
 
@@ -85,16 +88,33 @@ from it.
   grams for protein, carbs, and fat.
 - **Size limit.** `NUMERIC(5, 1)` holds up to 9999.9, which is plenty for one meal.
 - **Passwords.** The column is named `password_hash` because the API is expected to
-  store a salted hash. The auth code that does the hashing is not written yet.
+  store a salted hash. The sign-up and login code that does the hashing is not written
+  yet.
 
-## Loading and resetting the schema
+## How the schema gets loaded
 
-The schema is **not** applied automatically when the container starts. It is loaded
-with the command in the README.
+`docker-compose.yml` mounts `database/schema.sql` into the container's
+`/docker-entrypoint-initdb.d/` folder. PostgreSQL runs files in that folder **only the
+first time the database is created**, when the `pgdata` volume is empty.
 
-`schema.sql` begins with `DROP TABLE IF EXISTS` for both tables, so running it again
-**deletes all local data** and rebuilds the tables from scratch. That is handy for a
-clean reset and dangerous if you have data you want to keep.
+This has one important consequence: **editing `schema.sql` does not change a database
+that already exists.** Teammates have to reset their local database to pick up a schema
+change (see below).
+
+## Starting, stopping, and resetting
+
+| Task | Command |
+| --- | --- |
+| Start the database | `npm run db:up` |
+| Stop it (data is kept) | `npm run db:down` |
+| Reset it (**deletes all local data**) | `docker compose down -v`, then `npm run db:up` |
+
+Reset the database after changing `schema.sql` or `DB_PASSWORD`. The password is also
+only applied when the database is first created.
+
+`schema.sql` still begins with `DROP TABLE IF EXISTS` for both tables. That is harmless
+on a fresh database, but running the file by hand against a database that has data
+**deletes that data**.
 
 To check that the tables exist:
 
@@ -102,7 +122,19 @@ To check that the tables exist:
 docker exec -it atlas_db psql -U postgres -d atlas -c "\dt"
 ```
 
-You should see `users` and `food_logs`.
+You should see `users` and `food_logs`. If you changed `DB_USER` or `DB_NAME` in `.env`,
+use those values instead of `postgres` and `atlas`.
+
+## How the API connects
+
+The API reads the same `.env` file and connects with the `DB_HOST`, `DB_PORT`,
+`DB_NAME`, `DB_USER`, and `DB_PASSWORD` settings. It currently has one route that uses
+the database: `GET /health` runs a trivial query to confirm PostgreSQL is reachable.
+
+- Database reachable: `{"ok":true,"db":"up"}`
+- Database unreachable: HTTP 503 with `{"ok":false,"db":"down"}`
+
+With `npm run dev` running, open http://localhost:3000/health to check.
 
 ## Connecting with a database tool
 
@@ -111,9 +143,9 @@ For DBeaver, pgAdmin, or similar:
 | Setting | Value |
 | --- | --- |
 | Host | `localhost` |
-| Port | `5433` |
-| Database | `atlas` |
-| User | `postgres` |
+| Port | `5433` (or your `DB_PORT`) |
+| Database | `atlas` (or your `DB_NAME`) |
+| User | `postgres` (or your `DB_USER`) |
 | Password | the `DB_PASSWORD` from your `.env` |
 
 ## Not in the schema yet
@@ -129,5 +161,6 @@ These are known gaps, not mistakes:
 - **Workout logging.** Deferred past Sprint 1.
 - **Micronutrients.** The sprint goal mentions them, but the schema only has calories,
   protein, carbs, and fat.
-- **Migrations.** There is a single `schema.sql` that rebuilds everything. When it
-  changes, mention it in the pull request so teammates know to reload it.
+- **Migrations.** There is a single `schema.sql` that builds everything on first start.
+  When it changes, mention it in the pull request so teammates know to reset their local
+  database.
