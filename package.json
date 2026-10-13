@@ -1,0 +1,19 @@
+{
+  "name": "atlas",
+  "private": true,
+  "description": "Atlas - 490 Senior Project, Team 5",
+  "scripts": {
+    "setup": "node scripts/setup.mjs",
+    "dev": "node scripts/dev.mjs",
+    "dev:api": "npm --prefix api run dev",
+    "dev:app": "npm --prefix app run start",
+    "db:up": "docker compose up -d --wait",
+    "db:down": "docker compose down",
+    "lint": "npm --prefix api run lint && npm --prefix app run lint",
+    "typecheck": "npm --prefix api run typecheck && npm --prefix app run typecheck",
+    "build": "npm --prefix api run build"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}

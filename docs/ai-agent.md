@@ -74,7 +74,14 @@ returned it in the same turn.
 
 ## Integration notes for the team
 
-- **Packages:** `zod` (v4) for these files; `@google/genai` for the Gemini call.
+- **Packages:** `zod` (v4) is installed in `api/package.json`. `@google/genai` (for
+  the Gemini call) is not installed yet; add it with `npm install @google/genai` in
+  `api/` when the chat endpoint is built.
+- **CI:** the agent files are part of the API, so CI lints, type-checks, and builds them
+  on every pull request (see the README's Continuous integration section).
+- **Not built yet:** the `POST /v1/chat` handler and agent loop, the tool
+  implementations (`search_foods`, etc.), and the USDA cache. The API currently has
+  only `GET /health`.
 - **Database fit:** drafts are item-based (each food has its own grams, source, and
   macros), while `database/schema.sql` stores one row of totals per `food_logs` entry.
   To keep the USDA/estimated label and allow editing grams per item, we likely need a
