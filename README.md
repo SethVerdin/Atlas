@@ -65,6 +65,7 @@ Atlas/
 ├── api/                        Backend: Node.js + Fastify (TypeScript)
 │   ├── src/
 │   │   ├── server.ts           Server entry; GET /health checks the API and database
+│   │   ├── chat.ts             POST /v1/chat: sends a question to Gemini, returns the reply
 │   │   ├── config.ts           Reads settings from the root .env
 │   │   └── agent/              Gemini agent (see docs/ai-agent.md)
 │   │       ├── systemPrompt.ts   Instructions sent to Gemini on every request
@@ -83,8 +84,10 @@ Atlas/
 │   │   ├── app/                Screens. Each file is a route (Expo Router)
 │   │   │   ├── _layout.tsx       Root layout (tab navigation)
 │   │   │   ├── index.tsx         Home tab
+│   │   │   ├── ask.tsx           Ask tab: ask the AI questions (calls POST /v1/chat)
 │   │   │   └── explore.tsx       Explore tab
 │   │   ├── components/         Reusable UI (themed text/views, tabs, etc.)
+│   │   ├── lib/api.ts          Finds the API's address and calls it
 │   │   ├── constants/theme.ts  Colors and fonts for light and dark mode
 │   │   ├── hooks/              Color scheme and theme hooks
 │   │   ├── global.css          Font settings for the web version
@@ -113,8 +116,8 @@ Atlas/
 └── .nvmrc                      Node.js version (24)
 ```
 
-The app screens are currently Expo's starter template (Home and Explore tabs) and
-will be replaced with Atlas screens.
+The **Ask** tab is the first Atlas screen. Home and Explore are still Expo's starter
+template and will be replaced with Atlas screens.
 
 Each `package.json` needs its `package-lock.json` beside it. The lockfiles pin exact
 package versions so everyone, and CI, installs the same thing. They're long, but
@@ -154,6 +157,12 @@ npm run dev
 - **App:** Expo shows a QR code. Scan it with Expo Go (Android) or the Camera app (iOS).
   Or press `w` to open it in a web browser, or `a` for an Android emulator.
 
+To try the **Ask** tab, add a Gemini key to `.env` first (`GEMINI_API_KEY=...`, free at
+https://aistudio.google.com/apikey), then restart `npm run dev`. Without a key the
+screen shows "AI is not set up." The app finds the API on its own: on a phone it uses
+your computer's address on port 3000. To point it somewhere else, set
+`EXPO_PUBLIC_API_URL` in `app/.env`.
+
 Press `Ctrl+C` to stop both.
 
 | Command | What it does |
@@ -177,7 +186,7 @@ variables to `.env.example` with empty or placeholder values.
 | `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER` | Docker, API | Defaults: `localhost`, `5433`, `atlas`, `postgres` |
 | `DB_PASSWORD` | Docker, API | Required. Set it before the first `npm run setup`. Changing it later requires a database reset (below) |
 | `API_HOST`, `API_PORT` | API | Defaults: `0.0.0.0`, `3000` |
-| `GEMINI_API_KEY`, `GEMINI_MODEL` | API (later) | Not needed yet. Key from https://aistudio.google.com/apikey |
+| `GEMINI_API_KEY`, `GEMINI_MODEL` | API | Needed for the Ask tab (`POST /v1/chat`). The API starts without it, but chat returns "AI is not set up." Key from https://aistudio.google.com/apikey. Model defaults to `gemini-flash-latest` |
 | `USDA_API_KEY` | API (later) | Not needed yet. Key from https://fdc.nal.usda.gov/api-key-signup |
 
 ## Database

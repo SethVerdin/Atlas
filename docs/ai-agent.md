@@ -74,14 +74,20 @@ returned it in the same turn.
 
 ## Integration notes for the team
 
-- **Packages:** `zod` (v4) is installed in `api/package.json`. `@google/genai` (for
-  the Gemini call) is not installed yet; add it with `npm install @google/genai` in
-  `api/` when the chat endpoint is built.
+- **Packages:** `zod` (v4) is installed in `api/package.json`. The Gemini call uses
+  Node's built-in `fetch` against the REST API, so no Google SDK is needed.
+  `@google/genai` is optional if the team prefers the SDK later.
 - **CI:** the agent files are part of the API, so CI lints, type-checks, and builds them
   on every pull request (see the README's Continuous integration section).
-- **Not built yet:** the `POST /v1/chat` handler and agent loop, the tool
-  implementations (`search_foods`, etc.), and the USDA cache. The API currently has
-  only `GET /health`.
+- **Built (first version):** `POST /v1/chat` in `api/src/chat.ts`, used by the app's
+  Ask tab (`app/src/app/ask.tsx`). It takes `{ message, history, timeZone, units }`,
+  builds the request with `buildChatRequest` and `SYSTEM_PROMPT`, and returns
+  `{ reply }`. Errors return `{ error }` (400 bad input, 503 no `GEMINI_API_KEY`,
+  502 Gemini failure).
+  - It does **not** send tool declarations yet, because the tools aren't implemented.
+  - History comes from the app for now (no auth or stored messages yet).
+- **Not built yet:** the agent loop (tool calls), the tool implementations
+  (`search_foods`, etc.), the USDA cache, auth, and storing chat history.
 - **Database fit:** drafts are item-based (each food has its own grams, source, and
   macros), while `database/schema.sql` stores one row of totals per `food_logs` entry.
   To keep the USDA/estimated label and allow editing grams per item, we likely need a
