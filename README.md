@@ -98,7 +98,7 @@ Atlas/
 │   └── AGENTS.md               Expo's notes for AI coding tools
 │
 ├── database/
-│   └── schema.sql              Tables: users, food_logs (loaded on first database start)
+│   └── schema.sql              Tables: users, meals, meal_items, exercises, workout_logs
 ├── docs/
 │   └── ai-agent.md             How the AI agent and its context work
 ├── scripts/
@@ -187,7 +187,7 @@ default 5432). `database/schema.sql` is loaded automatically the first time the
 database is created.
 
 - **Check the tables:** `docker exec -it atlas_db psql -U postgres -d atlas -c "\dt"`
-  should list `users` and `food_logs`.
+  should list `exercises`, `meal_items`, `meals`, `users`, and `workout_logs`.
 - **Reset the database** (deletes all local data, then reloads `schema.sql` on the next
   start): `docker compose down -v`, then `npm run db:up`. Do this after changing
   `schema.sql` or `DB_PASSWORD`.
