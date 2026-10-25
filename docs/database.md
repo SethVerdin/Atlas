@@ -28,12 +28,15 @@ from `.env.example` for you.
 
 ## Tables
 
-Five tables, designed from the app mockup (Today chat, Today's macros, Saved exercises)
+Seven tables, designed from the app mockup (Today chat, Today's macros, Saved exercises)
 and kept simple on purpose. Limits to handle later are in
 [`database-known-issues.md`](database-known-issues.md).
 
 ```mermaid
 erDiagram
+    users ||--o{ chat_messages : sends
+    chat_messages |o--o{ meals : "shows draft"
+    chat_messages |o--o{ workout_logs : "shows draft"
     users ||--o{ meals : logs
     meals ||--|{ meal_items : contains
     users ||--o{ workout_logs : logs
@@ -44,6 +47,8 @@ erDiagram
 | Table | One row per | Used by (mockup) |
 | --- | --- | --- |
 | `users` | person | sign-in, time zone, lb/kg, daily goals (Today's macros) |
+| `chat_messages` | chat message | the Today chat feed; history sent to the AI |
+| `usda_foods` | USDA food | cache of per-100 g values from `search_foods` |
 | `meals` | meal | meal cards, Today's macros meal list |
 | `meal_items` | food in a meal | USDA / ESTIMATED badges, grams, per-item calories |
 | `exercises` | exercise | Saved exercises list, Push / Pull / Legs filters, body diagram |
@@ -77,6 +82,35 @@ Sign-in credentials, settings, and daily goals.
 | `goal_kcal`, `goal_protein_g`, `goal_carbs_g`, `goal_fat_g` | `INT` | Optional daily targets (e.g. 2400 / 160 / 260 / 80) |
 | `created_at` | `TIMESTAMPTZ` | Defaults to now |
 
+### `chat_messages`
+
+The Today chat feed, so it survives an app restart. The API also sends the last 14 to
+the AI as history.
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `message_id` | `SERIAL` | Primary key |
+| `user_id` | `INT` | Required. Foreign key to `users`; deleted with the user |
+| `role` | `VARCHAR(5)` | `user` or `model` (Atlas) |
+| `text` | `TEXT` | Required |
+| `created_at` | `TIMESTAMPTZ` | Defaults to now. Drives the time labels in the feed |
+
+A model message that showed a draft is linked from `meals.chat_message_id` or
+`workout_logs.chat_message_id`. That is how the feed rebuilds each card, and whether it
+shows Edit / Save (`draft`) or a Saved check (`saved`).
+
+### `usda_foods`
+
+Per-100 g values for every food `search_foods` returned. `draft_meal` reads them from
+here, so a USDA item's numbers always come from USDA, never from the AI.
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `fdc_id` | `INT` | Primary key. USDA FoodData Central ID |
+| `description` | `TEXT` | USDA's name for the food |
+| `kcal`, `protein_g`, `carbs_g`, `fat_g` | `NUMERIC` | Per 100 g |
+| `fetched_at` | `TIMESTAMPTZ` | Last time USDA returned it |
+
 ### `meals`
 
 One meal. Replaces the old `food_logs` table.
@@ -88,6 +122,7 @@ One meal. Replaces the old `food_logs` table.
 | `meal_type` | `meal_type` | Required. Drives "Lunch not logged yet" |
 | `status` | `entry_status` | Default `draft`. **Only `saved` meals count toward totals** |
 | `raw_text` | `TEXT` | Required. What the user typed or said |
+| `chat_message_id` | `INT` | The Atlas message that showed this draft. Emptied if the message is deleted |
 | `eaten_at` | `TIMESTAMPTZ` | When the meal was eaten (not when it was saved). Defaults to now |
 | `created_at` | `TIMESTAMPTZ` | Defaults to now |
 
@@ -122,8 +157,13 @@ Built-in exercises (no `user_id`) and each user's own.
 | `secondary_muscles` | `muscle[]` | Helper muscles, e.g. `{triceps, front_delts}`. Default empty |
 | `created_at` | `TIMESTAMPTZ` | Defaults to now |
 
-`schema.sql` adds five built-in exercises from the mockup: Bench Press, Overhead Press,
-Back Squat, Romanian Deadlift, and Pull-up, each with its muscles.
+`schema.sql` adds built-in exercises with their muscles: the five from the mockup (Bench
+Press, Overhead Press, Back Squat, Romanian Deadlift, Pull-up) plus common lifts (Incline
+Bench Press, Dip, Push-up, Barbell Row, Lat Pulldown, Deadlift, Bicep Curl, Leg Press,
+Lunge, Plank), so the AI matches them instead of creating duplicates (known issue 5).
+
+It also adds a **demo user** (`demo@atlas.local`, goals 2,400 kcal / 160 g protein /
+260 g carbs / 80 g fat). There is no sign-in yet, so the API acts as this user.
 
 ### `workout_logs`
 
@@ -139,6 +179,7 @@ One exercise done once, e.g. "3 × 8 at 185 lb".
 | `unit` | `weight_unit` | Default `lb` |
 | `status` | `entry_status` | Default `draft`. **Only `saved` logs count toward history and the body diagram** |
 | `raw_text` | `TEXT` | Required. What the user typed or said |
+| `chat_message_id` | `INT` | The Atlas message that showed this draft. Emptied if the message is deleted |
 | `performed_at` | `TIMESTAMPTZ` | When the exercise was done. Defaults to now |
 | `created_at` | `TIMESTAMPTZ` | Defaults to now |
 
@@ -229,12 +270,10 @@ For DBeaver, pgAdmin, or similar:
 These are known gaps, not mistakes. The full list, with what to add for each, is in
 [`database-known-issues.md`](database-known-issues.md).
 
-- **Chat history.** No table yet, so the chat starts empty after an app restart. Meal
-  and workout cards can still be rebuilt from `meals` and `workout_logs`.
 - **Per-set detail.** `workout_logs` has one row per exercise, so "3 × 8, last set 6"
   can't be recorded exactly.
-- **Goal history, workout sessions, and a USDA cache.** Left out until a feature needs
-  them.
+- **Goal history and workout sessions.** Left out until a feature needs them. (A
+  workout draft's rows share a `chat_message_id`, which is enough for "Last: …" for now.)
 - **Micronutrients.** The sprint goal mentions them, but the schema only has calories,
   protein, carbs, and fat.
 - **Migrations.** There is a single `schema.sql` that builds everything on first start.

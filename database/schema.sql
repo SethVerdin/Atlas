@@ -6,7 +6,7 @@
 -- WARNING: this file drops and recreates everything. Running it by hand against a
 -- database that has data deletes that data.
 
-DROP TABLE IF EXISTS workout_logs, exercises, meal_items, meals, food_logs, users CASCADE;
+DROP TABLE IF EXISTS workout_logs, exercises, meal_items, meals, chat_messages, usda_foods, food_logs, users CASCADE;
 DROP TYPE IF EXISTS entry_status, meal_type, nutrient_source, weight_unit,
     exercise_category, muscle CASCADE;
 
@@ -36,6 +36,29 @@ CREATE TABLE users (
     created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Chat messages: the home screen feed and the history sent to the AI each turn.
+-- A model message that showed a draft is linked from meals / workout_logs.
+CREATE TABLE chat_messages (
+    message_id SERIAL PRIMARY KEY,
+    user_id    INT NOT NULL REFERENCES users (user_id) ON DELETE CASCADE,
+    role       VARCHAR(5)  NOT NULL CHECK (role IN ('user', 'model')),
+    text       TEXT        NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX chat_messages_user ON chat_messages (user_id, message_id);
+
+-- USDA cache: per-100 g values for foods returned by search_foods, so draft_meal
+-- can use them without calling USDA again.
+CREATE TABLE usda_foods (
+    fdc_id      INT PRIMARY KEY,
+    description TEXT          NOT NULL,
+    kcal        NUMERIC(5, 1) NOT NULL,
+    protein_g   NUMERIC(4, 1) NOT NULL,
+    carbs_g     NUMERIC(4, 1) NOT NULL,
+    fat_g       NUMERIC(4, 1) NOT NULL,
+    fetched_at  TIMESTAMPTZ   NOT NULL DEFAULT now()
+);
+
 -- Meals: one row per meal. Only status = 'saved' counts toward totals.
 CREATE TABLE meals (
     meal_id    SERIAL PRIMARY KEY,
@@ -43,6 +66,7 @@ CREATE TABLE meals (
     meal_type  meal_type    NOT NULL,
     status     entry_status NOT NULL DEFAULT 'draft',
     raw_text   TEXT         NOT NULL,                  -- what the user typed or said
+    chat_message_id INT REFERENCES chat_messages (message_id) ON DELETE SET NULL,  -- message that showed the draft
     eaten_at   TIMESTAMPTZ  NOT NULL DEFAULT now(),    -- when it was eaten
     created_at TIMESTAMPTZ  NOT NULL DEFAULT now()
 );
@@ -100,15 +124,31 @@ CREATE TABLE workout_logs (
     unit         weight_unit  NOT NULL DEFAULT 'lb',
     status       entry_status NOT NULL DEFAULT 'draft',
     raw_text     TEXT         NOT NULL,
+    chat_message_id INT REFERENCES chat_messages (message_id) ON DELETE SET NULL,  -- message that showed the draft
     performed_at TIMESTAMPTZ  NOT NULL DEFAULT now(),
     created_at   TIMESTAMPTZ  NOT NULL DEFAULT now()
 );
 CREATE INDEX workout_logs_user_exercise ON workout_logs (user_id, exercise_id, performed_at);
 
--- Built-in exercises (the ones in the app mockup).
+-- Built-in exercises (the ones in the app mockup, plus common lifts so the AI
+-- matches them instead of creating duplicates; see known issue 5).
 INSERT INTO exercises (name, category, primary_muscle, secondary_muscles) VALUES
     ('Bench Press',       'push', 'chest',       '{triceps, front_delts}'),
     ('Overhead Press',    'push', 'front_delts', '{triceps, traps}'),
     ('Back Squat',        'legs', 'quads',       '{glutes, hamstrings, lower_back}'),
     ('Romanian Deadlift', 'legs', 'hamstrings',  '{glutes, lower_back}'),
-    ('Pull-up',           'pull', 'upper_back',  '{biceps, rear_delts}');
+    ('Pull-up',           'pull', 'upper_back',  '{biceps, rear_delts}'),
+    ('Incline Bench Press', 'push', 'chest',       '{front_delts, triceps}'),
+    ('Dip',               'push', 'triceps',     '{chest, front_delts}'),
+    ('Push-up',           'push', 'chest',       '{triceps, front_delts}'),
+    ('Barbell Row',       'pull', 'upper_back',  '{biceps, rear_delts}'),
+    ('Lat Pulldown',      'pull', 'upper_back',  '{biceps}'),
+    ('Deadlift',          'pull', 'lower_back',  '{glutes, hamstrings, traps}'),
+    ('Bicep Curl',        'pull', 'biceps',      '{forearms}'),
+    ('Leg Press',         'legs', 'quads',       '{glutes}'),
+    ('Lunge',             'legs', 'quads',       '{glutes, hamstrings}'),
+    ('Plank',             'core', 'abs',         '{}');
+
+-- Demo user. There is no sign-in yet, so the API acts as this user (api/src/user.ts).
+INSERT INTO users (email, password_hash, goal_kcal, goal_protein_g, goal_carbs_g, goal_fat_g)
+VALUES ('demo@atlas.local', 'no-login-yet', 2400, 160, 260, 80);

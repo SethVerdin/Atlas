@@ -25,4 +25,6 @@ export const config = {
     apiKey: process.env.GEMINI_API_KEY ?? "",
     model: process.env.GEMINI_MODEL || "gemini-flash-latest",
   },
+  // USDA's shared DEMO_KEY works for trying things out but is heavily rate limited.
+  usdaApiKey: process.env.USDA_API_KEY || "DEMO_KEY",
 };

@@ -45,7 +45,9 @@ care in code or a later change.
    it (the foreign key has no cascade). The app needs a "hide" option instead.
    *Later fix:* an `is_archived` column on `exercises`.
 
-9. **Abandoned drafts pile up.** Drafts the user never saves stay forever.
+9. **Abandoned drafts pile up.** Drafts the user never saves stay forever. (A new draft
+   does replace the user's earlier unsaved draft of the same kind, so at most one meal
+   draft and one workout draft are waiting at a time.)
    *Later fix:* a cleanup job that deletes drafts older than a few days.
 
 ## Process
@@ -59,9 +61,7 @@ care in code or a later change.
 
 | Feature | What to add |
 | --- | --- |
-| Chat history that survives an app restart | `chat_messages` table |
 | Per-set detail | `exercise_sets` table (see 7) |
 | Goal history (chart goal changes over time) | `goals` table with start dates |
 | Grouping exercises into workout sessions | `workouts` table |
-| Fewer USDA API calls | `usda_foods` cache table |
 | Many exercises sharing complex muscle data | `muscle_groups` + `exercise_muscles` tables, replacing the muscle columns |

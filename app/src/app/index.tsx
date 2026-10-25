@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useState } from 'react';
+import { KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -10,44 +10,95 @@ import { MacrosSheet } from '@/components/atlas/macros-sheet';
 import { TalkPanel } from '@/components/atlas/talk-panel';
 import { AtlasColors as C } from '@/constants/theme';
 import {
-  dailyGoals,
-  loggedMeals,
-  sampleChat,
-  sampleDate,
-  sampleTranscript,
-  savedExercises,
-  units,
-} from '@/data/sample-day';
+  getExercises,
+  getMessages,
+  getToday,
+  saveDraft,
+  sendMessage,
+  type ChatMessage,
+  type DraftEdits,
+  type SavedExercise,
+  type Today,
+} from '@/lib/api';
 
 /** Gap between the top safe-area edge and an open sheet, so the header peeks out. */
 const SHEET_TOP_OFFSET = 48;
 const MAX_WIDTH = 520;
 
+const errorText = (e: unknown) => (e instanceof Error ? e.message : 'Something went wrong.');
+
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const [panel, setPanel] = useState<Panel | null>(null);
-  const toggle = (next: Panel) => setPanel((current) => (current === next ? null : next));
+  const [talkPrefill, setTalkPrefill] = useState('');
+
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [sending, setSending] = useState<string | null>(null);
+  // A message that failed to send; reopening the mic brings it back.
+  const [unsent, setUnsent] = useState('');
+  const [chatError, setChatError] = useState<string | null>(null);
+
+  const [today, setToday] = useState<Today | null>(null);
+  const [exercises, setExercises] = useState<SavedExercise[] | null>(null);
+  const [sheetError, setSheetError] = useState<string | null>(null);
+
+  useEffect(() => {
+    getMessages()
+      .then(setMessages)
+      .catch((e) => setChatError(errorText(e)));
+  }, []);
+
+  // Sheets show the last data right away and refresh every time they open.
+  const refreshSheet = useCallback((next: Panel) => {
+    setSheetError(null);
+    if (next === 'macros') getToday().then(setToday).catch((e) => setSheetError(errorText(e)));
+    if (next === 'exercises') getExercises().then(setExercises).catch((e) => setSheetError(errorText(e)));
+  }, []);
+
+  const open = (next: Panel, prefill = '') => {
+    setTalkPrefill(prefill);
+    setPanel(next);
+    refreshSheet(next);
+  };
+  const toggle = (next: Panel) => (panel === next ? setPanel(null) : open(next, next === 'talk' ? unsent : ''));
   const close = () => setPanel(null);
 
-  const consumed = sampleChat.reduce(
-    (sum, m) =>
-      m.kind === 'agent' && m.draft?.type === 'meal'
-        ? {
-            kcal: sum.kcal + m.draft.totals.kcal,
-            protein_g: sum.protein_g + m.draft.totals.protein_g,
-            carbs_g: sum.carbs_g + m.draft.totals.carbs_g,
-            fat_g: sum.fat_g + m.draft.totals.fat_g,
-          }
-        : sum,
-    { kcal: 0, protein_g: 0, carbs_g: 0, fat_g: 0 },
-  );
+  const send = async (text: string) => {
+    setPanel(null);
+    setSending(text);
+    setChatError(null);
+    try {
+      const added = await sendMessage(text);
+      setMessages((m) => [...m, ...added]);
+      setUnsent('');
+    } catch (e) {
+      setChatError(errorText(e));
+      setUnsent(text);
+    } finally {
+      setSending(null);
+    }
+  };
+
+  const save = async (messageId: number, edits: DraftEdits) => {
+    setChatError(null);
+    try {
+      const draft = await saveDraft(messageId, edits);
+      setMessages((m) => m.map((x) => (x.id === messageId ? { ...x, draft } : x)));
+    } catch (e) {
+      setChatError(errorText(e));
+      // A newer draft may have replaced this one; reload so the feed matches the server.
+      getMessages().then(setMessages).catch(() => {});
+    }
+  };
+
+  const date = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
 
   return (
-    <View style={styles.root}>
+    <KeyboardAvoidingView style={styles.root} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <View style={styles.column}>
         <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
           <View style={styles.titleBlock}>
-            <Text style={styles.date}>{sampleDate}</Text>
+            <Text style={styles.date}>{date}</Text>
             <Text accessibilityRole="header" style={styles.title}>
               Today
             </Text>
@@ -55,7 +106,7 @@ export default function HomeScreen() {
           <Text style={styles.brand}>ATLAS</Text>
         </View>
 
-        <ChatFeed messages={sampleChat} units={units} />
+        <ChatFeed messages={messages} sending={sending} error={chatError} onSave={save} />
 
         {panel && (
           <View style={[StyleSheet.absoluteFill, { bottom: BOTTOM_BAR_HEIGHT + insets.bottom }]}>
@@ -64,23 +115,29 @@ export default function HomeScreen() {
             </Animated.View>
             {panel === 'macros' && (
               <MacrosSheet
-                consumed={consumed}
-                goals={dailyGoals}
-                meals={loggedMeals}
+                today={today}
+                error={sheetError}
                 top={insets.top + SHEET_TOP_OFFSET}
                 onClose={close}
+                onLogMeal={() => open('talk')}
               />
             )}
             {panel === 'exercises' && (
-              <ExercisesSheet exercises={savedExercises} top={insets.top + SHEET_TOP_OFFSET} onClose={close} />
+              <ExercisesSheet
+                exercises={exercises}
+                error={sheetError}
+                top={insets.top + SHEET_TOP_OFFSET}
+                onClose={close}
+                onPick={(name) => open('talk', `${name} `)}
+              />
             )}
-            {panel === 'talk' && <TalkPanel transcript={sampleTranscript} onCancel={close} onSend={close} />}
+            {panel === 'talk' && <TalkPanel initialText={talkPrefill} onCancel={close} onSend={send} />}
           </View>
         )}
 
         <BottomBar active={panel} onPress={toggle} bottomInset={insets.bottom} />
       </View>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 

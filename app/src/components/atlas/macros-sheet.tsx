@@ -1,23 +1,33 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Sheet } from '@/components/atlas/sheet';
 import { AtlasColors as C } from '@/constants/theme';
-import type { Macros } from '@/data/sample-day';
-
-type Meal = { name: string; time: string; items: number; kcal: number };
+import type { Today } from '@/lib/api';
 
 type Props = {
-  consumed: Macros;
-  goals: Macros;
-  meals: Meal[];
+  today: Today | null;
+  error: string | null;
   top: number;
   onClose: () => void;
+  /** Opens the mic, from the "not logged yet" row. */
+  onLogMeal: () => void;
 };
 
-const share = (got: number, goal: number) => `${Math.min(100, (got / goal) * 100)}%` as const;
+/** Bar width; with no goal set, an empty bar. */
+const share = (got: number, goal: number | null) => `${goal ? Math.min(100, (got / goal) * 100) : 0}%` as const;
 
-export function MacrosSheet({ consumed, goals, meals, top, onClose }: Props) {
-  const left = Math.max(0, goals.kcal - consumed.kcal);
+export function MacrosSheet({ today, error, top, onClose, onLogMeal }: Props) {
+  if (!today) {
+    return (
+      <Sheet title="Today's macros" top={top} onClose={onClose}>
+        {error ? <Text style={styles.secondary14}>{error}</Text> : <ActivityIndicator color={C.textSecondary} />}
+      </Sheet>
+    );
+  }
+
+  const { totals: consumed, goals, meals, nextMeal } = today;
+  const kcalGoal = goals.kcal ?? 0;
+  const diff = kcalGoal - consumed.kcal;
   const bars = [
     { label: 'Protein', got: consumed.protein_g, goal: goals.protein_g, color: C.accent },
     { label: 'Carbs', got: consumed.carbs_g, goal: goals.carbs_g, color: C.carbs },
@@ -26,58 +36,74 @@ export function MacrosSheet({ consumed, goals, meals, top, onClose }: Props) {
 
   return (
     <Sheet title="Today's macros" top={top} onClose={onClose}>
-      <View style={styles.gap10}>
-        <View style={styles.calRow}>
-          <View style={styles.calNumber}>
-            <Text style={styles.kcalBig}>{consumed.kcal.toLocaleString()}</Text>
-            <Text style={styles.secondary15}>/ {goals.kcal.toLocaleString()} kcal</Text>
-          </View>
-          <Text style={styles.secondary14}>{left.toLocaleString()} left</Text>
-        </View>
-        <View style={[styles.track, styles.trackTall]}>
-          <View style={[styles.fill, { width: share(consumed.kcal, goals.kcal), backgroundColor: C.accent }]} />
-        </View>
-      </View>
-
-      <View style={styles.gap14}>
-        {bars.map((b) => (
-          <View key={b.label} style={styles.gap6}>
-            <View style={styles.rowBetween}>
-              <Text style={styles.barLabel}>{b.label}</Text>
+      <ScrollView style={styles.scroll} contentContainerStyle={styles.body}>
+        <View style={styles.gap10}>
+          <View style={styles.calRow}>
+            <View style={styles.calNumber}>
+              <Text style={styles.kcalBig}>{consumed.kcal.toLocaleString()}</Text>
+              <Text style={styles.secondary15}>{kcalGoal > 0 ? `/ ${kcalGoal.toLocaleString()} kcal` : 'kcal'}</Text>
+            </View>
+            {kcalGoal > 0 && (
               <Text style={styles.secondary14}>
-                {b.got} / {b.goal} g
+                {Math.abs(diff).toLocaleString()} {diff >= 0 ? 'left' : 'over'}
               </Text>
-            </View>
-            <View style={styles.track}>
-              <View style={[styles.fill, { width: share(b.got, b.goal), backgroundColor: b.color }]} />
-            </View>
+            )}
           </View>
-        ))}
-      </View>
-
-      <View style={styles.gap8}>
-        <Text style={styles.sectionLabel}>MEALS</Text>
-        {meals.map((m) => (
-          <View key={m.name} style={[styles.rowBetween, styles.meal]}>
-            <View style={styles.gap2}>
-              <Text style={styles.mealName}>{m.name}</Text>
-              <Text style={styles.secondary13}>
-                {m.time} · {m.items} items
-              </Text>
-            </View>
-            <Text style={styles.mealKcal}>{m.kcal} kcal</Text>
+          <View style={[styles.track, styles.trackTall]}>
+            <View style={[styles.fill, { width: share(consumed.kcal, goals.kcal), backgroundColor: C.accent }]} />
           </View>
-        ))}
-        <View style={[styles.rowBetween, styles.emptyMeal]}>
-          <Text style={styles.secondary14}>Next meal not logged yet</Text>
-          <Text style={styles.secondary13}>Tap the mic</Text>
         </View>
-      </View>
+
+        <View style={styles.gap14}>
+          {bars.map((b) => (
+            <View key={b.label} style={styles.gap6}>
+              <View style={styles.rowBetween}>
+                <Text style={styles.barLabel}>{b.label}</Text>
+                <Text style={styles.secondary14}>
+                  {b.got} {b.goal ? `/ ${b.goal} ` : ''}g
+                </Text>
+              </View>
+              <View style={styles.track}>
+                <View style={[styles.fill, { width: share(b.got, b.goal), backgroundColor: b.color }]} />
+              </View>
+            </View>
+          ))}
+        </View>
+
+        <View style={styles.gap8}>
+          <Text style={styles.sectionLabel}>MEALS</Text>
+          {meals.map((m) => (
+            <View key={m.id} style={[styles.rowBetween, styles.meal]}>
+              <View style={styles.gap2}>
+                <Text style={styles.mealName}>{m.name}</Text>
+                <Text style={styles.secondary13}>
+                  {m.time} · {m.itemCount} {m.itemCount === 1 ? 'item' : 'items'}
+                </Text>
+              </View>
+              <Text style={styles.mealKcal}>{m.kcal} kcal</Text>
+            </View>
+          ))}
+          {nextMeal ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Log ${nextMeal}`}
+              onPress={onLogMeal}
+              style={[styles.rowBetween, styles.emptyMeal]}>
+              <Text style={styles.secondary14}>{nextMeal} not logged yet</Text>
+              <Text style={styles.secondary13}>Tap the mic</Text>
+            </Pressable>
+          ) : (
+            meals.length === 0 && <Text style={styles.secondary14}>No meals saved today.</Text>
+          )}
+        </View>
+      </ScrollView>
     </Sheet>
   );
 }
 
 const styles = StyleSheet.create({
+  scroll: { flexShrink: 1 },
+  body: { gap: 20 },
   calRow: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' },
   calNumber: { flexDirection: 'row', alignItems: 'baseline', gap: 6 },
   kcalBig: { fontSize: 44, fontWeight: '700', letterSpacing: -1, color: C.text },

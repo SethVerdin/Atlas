@@ -65,12 +65,21 @@ Atlas/
 ├── api/                        Backend: Node.js + Fastify (TypeScript)
 │   ├── src/
 │   │   ├── server.ts           Server entry; GET /health checks the API and database
-│   │   ├── chat.ts             POST /v1/chat: sends a question to Gemini, returns the reply
+│   │   ├── chat.ts             Chat feed: GET /v1/messages, POST /v1/chat, POST /v1/drafts/:id/save
+│   │   ├── drafts.ts           Stores drafts as status 'draft' rows; Save applies edits and marks them saved
+│   │   ├── summary.ts          GET /v1/today (Macros button), GET /v1/exercises (Exercises button)
+│   │   ├── user.ts             Current user (the seeded demo user until sign-in exists)
+│   │   ├── db.ts, time.ts      Shared PostgreSQL pool; time-zone helpers
 │   │   ├── config.ts           Reads settings from the root .env
 │   │   └── agent/              Gemini agent (see docs/ai-agent.md)
 │   │       ├── systemPrompt.ts   Instructions sent to Gemini on every request
 │   │       ├── tools.ts          Tool definitions + argument validation
+│   │       ├── runTool.ts        Runs each tool call for the current user
+│   │       ├── loop.ts           The agent loop: Gemini → tools → Gemini, up to 5 calls
+│   │       ├── gemini.ts         Gemini REST call, timeout, and app-facing errors
+│   │       ├── usda.ts           USDA FoodData Central search + usda_foods cache
 │   │       ├── mealDraft.ts      Nutrient math and estimate checks
+│   │       ├── workoutDraft.ts   Workout drafts (exercise IDs checked against the catalog)
 │   │       └── context.ts        Builds each Gemini request (history + session context)
 │   ├── examples/
 │   │   └── sample-turn.json    One full chat turn as JSON
@@ -82,14 +91,13 @@ Atlas/
 ├── app/                        Mobile app: Expo (React Native, TypeScript)
 │   ├── src/
 │   │   ├── app/                Screens. Each file is a route (Expo Router)
-│   │   │   ├── _layout.tsx       Root layout (tab navigation)
-│   │   │   ├── index.tsx         Home tab
-│   │   │   ├── ask.tsx           Ask tab: ask the AI questions (calls POST /v1/chat)
-│   │   │   └── explore.tsx       Explore tab
-│   │   ├── components/         Reusable UI (themed text/views, tabs, etc.)
-│   │   ├── lib/api.ts          Finds the API's address and calls it
-│   │   ├── constants/theme.ts  Colors and fonts for light and dark mode
-│   │   ├── hooks/              Color scheme and theme hooks
+│   │   │   ├── _layout.tsx       Root layout (one stack, no tabs)
+│   │   │   └── index.tsx         Home screen: chat feed, Macros / mic / Exercises buttons
+│   │   ├── components/atlas/   Home screen parts: chat feed + draft cards, sheets, talk panel
+│   │   ├── components/         Other reusable UI (themed text/views, etc.)
+│   │   ├── lib/api.ts          Finds the API's address; typed calls for every endpoint
+│   │   ├── constants/theme.ts  Colors (AtlasColors) and fonts
+│   │   ├── hooks/              Color scheme, theme, and speech-to-text (web only for now)
 │   │   ├── global.css          Font settings for the web version
 │   │   └── expo-types.d.ts     Expo type references (needed for type-checking in CI)
 │   ├── assets/                 App icons, splash screen, and images
@@ -101,7 +109,8 @@ Atlas/
 │   └── AGENTS.md               Expo's notes for AI coding tools
 │
 ├── database/
-│   └── schema.sql              Tables: users, meals, meal_items, exercises, workout_logs
+│   └── schema.sql              Tables: users, chat_messages, usda_foods, meals, meal_items,
+│                               exercises, workout_logs; seeds exercises and a demo user
 ├── docs/
 │   └── ai-agent.md             How the AI agent and its context work
 ├── scripts/
@@ -116,8 +125,10 @@ Atlas/
 └── .nvmrc                      Node.js version (24)
 ```
 
-The **Ask** tab is the first Atlas screen. Home and Explore are still Expo's starter
-template and will be replaced with Atlas screens.
+The app has one screen, **Home**: a chat feed where Atlas drafts meals and workouts,
+with **Macros** (left), the **mic** (center), and **Exercises** (right) along the bottom.
+Everything on it comes from the API and database. There is no sign-in yet: the API acts
+as a demo user that `schema.sql` creates.
 
 Each `package.json` needs its `package-lock.json` beside it. The lockfiles pin exact
 package versions so everyone, and CI, installs the same thing. They're long, but
@@ -157,11 +168,15 @@ npm run dev
 - **App:** Expo shows a QR code. Scan it with Expo Go (Android) or the Camera app (iOS).
   Or press `w` to open it in a web browser, or `a` for an Android emulator.
 
-To try the **Ask** tab, add a Gemini key to `.env` first (`GEMINI_API_KEY=...`, free at
+To chat with Atlas, add a Gemini key to `.env` first (`GEMINI_API_KEY=...`, free at
 https://aistudio.google.com/apikey), then restart `npm run dev`. Without a key the
 screen shows "AI is not set up." The app finds the API on its own: on a phone it uses
 your computer's address on port 3000. To point it somewhere else, set
 `EXPO_PUBLIC_API_URL` in `app/.env`.
+
+**Database created before the home screen was wired up?** Reset it once so it has the
+new tables and the demo user: `docker compose down -v`, then `npm run db:up` (this
+deletes local data). Otherwise the feed shows an error like "Demo user ... is missing".
 
 Press `Ctrl+C` to stop both.
 
@@ -186,8 +201,8 @@ variables to `.env.example` with empty or placeholder values.
 | `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER` | Docker, API | Defaults: `localhost`, `5433`, `atlas`, `postgres` |
 | `DB_PASSWORD` | Docker, API | Required. Set it before the first `npm run setup`. Changing it later requires a database reset (below) |
 | `API_HOST`, `API_PORT` | API | Defaults: `0.0.0.0`, `3000` |
-| `GEMINI_API_KEY`, `GEMINI_MODEL` | API | Needed for the Ask tab (`POST /v1/chat`). The API starts without it, but chat returns "AI is not set up." Key from https://aistudio.google.com/apikey. Model defaults to `gemini-flash-latest` |
-| `USDA_API_KEY` | API (later) | Not needed yet. Key from https://fdc.nal.usda.gov/api-key-signup |
+| `GEMINI_API_KEY`, `GEMINI_MODEL` | API | Needed for chat (`POST /v1/chat`). The API starts without it, but chat returns "AI is not set up." Key from https://aistudio.google.com/apikey. Model defaults to `gemini-flash-latest` |
+| `USDA_API_KEY` | API | Used by the agent's food search. Optional: without it the API uses USDA's shared `DEMO_KEY`, which is heavily rate limited. Key from https://fdc.nal.usda.gov/api-key-signup |
 
 ## Database
 
@@ -295,11 +310,11 @@ Never put real secrets in `.env.example`.
   `npm run dev:api` in one terminal and `npx expo start --tunnel` inside `app/` in another.
   With a tunnel, the app can't find the API by itself: also set `EXPO_PUBLIC_API_URL` in
   `app/.env` to an address your phone can reach.
-- **Phone loads the app, but Ask says "Can't reach the Atlas API"**: Windows Firewall may
+- **Phone loads the app, but the feed says "Can't reach the Atlas API"**: Windows Firewall may
   be blocking port 3000. When Windows asks about Node.js, allow it on **Private
   networks**. Or test in the browser (press `w`).
 
-### Ask tab (AI) errors
+### Chat (AI) errors
 
 The app shows a short message. The real cause is in the terminal's `[api]` log lines
 ("Gemini returned an error").
