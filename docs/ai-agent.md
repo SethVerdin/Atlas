@@ -105,10 +105,9 @@ returned it in the same turn.
   - History comes from the app for now (no auth or stored messages yet).
 - **Not built yet:** the agent loop (tool calls), the tool implementations
   (`search_foods`, etc.), the USDA cache, auth, and storing chat history.
-- **Database fit:** drafts are item-based (each food has its own grams, source, and
-  macros), while `database/schema.sql` stores one row of totals per `food_logs` entry.
-  To keep the USDA/estimated label and allow editing grams per item, we likely need a
-  `food_log_items` table (or a JSONB `items` column). Team decision.
+- **Database fit:** drafts are item-based, matching the `meals` + `meal_items` tables
+  (each food keeps its grams, source, and per-100 g values). A `usda` item needs an
+  `fdc_id` and an `estimated` item needs an `estimate_basis`. See `docs/database.md`.
 - **Model name:** keep it in config (`GEMINI_MODEL`), since Google renames models often.
 
 ## Open items
