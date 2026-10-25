@@ -1,94 +1,102 @@
-import * as Device from 'expo-device';
-import { Platform, StyleSheet } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useState } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { AnimatedIcon } from '@/components/animated-icon';
-import { HintRow } from '@/components/hint-row';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { WebBadge } from '@/components/web-badge';
-import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { BOTTOM_BAR_HEIGHT, BottomBar, type Panel } from '@/components/atlas/bottom-bar';
+import { ChatFeed } from '@/components/atlas/chat-feed';
+import { ExercisesSheet } from '@/components/atlas/exercises-sheet';
+import { MacrosSheet } from '@/components/atlas/macros-sheet';
+import { TalkPanel } from '@/components/atlas/talk-panel';
+import { AtlasColors as C } from '@/constants/theme';
+import {
+  dailyGoals,
+  loggedMeals,
+  sampleChat,
+  sampleDate,
+  sampleTranscript,
+  savedExercises,
+  units,
+} from '@/data/sample-day';
 
-function getDevMenuHint() {
-  if (Platform.OS === 'web') {
-    return <ThemedText type="small">use browser devtools</ThemedText>;
-  }
-  if (Device.isDevice) {
-    return (
-      <ThemedText type="small">
-        shake device or press <ThemedText type="code">m</ThemedText> in terminal
-      </ThemedText>
-    );
-  }
-  const shortcut = Platform.OS === 'android' ? 'cmd+m (or ctrl+m)' : 'cmd+d';
-  return (
-    <ThemedText type="small">
-      press <ThemedText type="code">{shortcut}</ThemedText>
-    </ThemedText>
-  );
-}
+/** Gap between the top safe-area edge and an open sheet, so the header peeks out. */
+const SHEET_TOP_OFFSET = 48;
+const MAX_WIDTH = 520;
 
 export default function HomeScreen() {
+  const insets = useSafeAreaInsets();
+  const [panel, setPanel] = useState<Panel | null>(null);
+  const toggle = (next: Panel) => setPanel((current) => (current === next ? null : next));
+  const close = () => setPanel(null);
+
+  const consumed = sampleChat.reduce(
+    (sum, m) =>
+      m.kind === 'agent' && m.draft?.type === 'meal'
+        ? {
+            kcal: sum.kcal + m.draft.totals.kcal,
+            protein_g: sum.protein_g + m.draft.totals.protein_g,
+            carbs_g: sum.carbs_g + m.draft.totals.carbs_g,
+            fat_g: sum.fat_g + m.draft.totals.fat_g,
+          }
+        : sum,
+    { kcal: 0, protein_g: 0, carbs_g: 0, fat_g: 0 },
+  );
+
   return (
-    <ThemedView style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
-        <ThemedView style={styles.heroSection}>
-          <AnimatedIcon />
-          <ThemedText type="title" style={styles.title}>
-            Welcome to&nbsp;Expo
-          </ThemedText>
-        </ThemedView>
+    <View style={styles.root}>
+      <View style={styles.column}>
+        <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
+          <View style={styles.titleBlock}>
+            <Text style={styles.date}>{sampleDate}</Text>
+            <Text accessibilityRole="header" style={styles.title}>
+              Today
+            </Text>
+          </View>
+          <Text style={styles.brand}>ATLAS</Text>
+        </View>
 
-        <ThemedText type="code" style={styles.code}>
-          get started
-        </ThemedText>
+        <ChatFeed messages={sampleChat} units={units} />
 
-        <ThemedView type="backgroundElement" style={styles.stepContainer}>
-          <HintRow
-            title="Try editing"
-            hint={<ThemedText type="code">src/app/index.tsx</ThemedText>}
-          />
-          <HintRow title="Dev tools" hint={getDevMenuHint()} />
-        </ThemedView>
+        {panel && (
+          <View style={[StyleSheet.absoluteFill, { bottom: BOTTOM_BAR_HEIGHT + insets.bottom }]}>
+            <Animated.View entering={FadeIn.duration(180)} exiting={FadeOut.duration(150)} style={StyleSheet.absoluteFill}>
+              <Pressable accessibilityLabel="Close" onPress={close} style={styles.scrim} />
+            </Animated.View>
+            {panel === 'macros' && (
+              <MacrosSheet
+                consumed={consumed}
+                goals={dailyGoals}
+                meals={loggedMeals}
+                top={insets.top + SHEET_TOP_OFFSET}
+                onClose={close}
+              />
+            )}
+            {panel === 'exercises' && (
+              <ExercisesSheet exercises={savedExercises} top={insets.top + SHEET_TOP_OFFSET} onClose={close} />
+            )}
+            {panel === 'talk' && <TalkPanel transcript={sampleTranscript} onCancel={close} onSend={close} />}
+          </View>
+        )}
 
-        {Platform.OS === 'web' && <WebBadge />}
-      </SafeAreaView>
-    </ThemedView>
+        <BottomBar active={panel} onPress={toggle} bottomInset={insets.bottom} />
+      </View>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: 'center',
+  root: { flex: 1, backgroundColor: C.bg },
+  column: { flex: 1, width: '100%', maxWidth: MAX_WIDTH, alignSelf: 'center', overflow: 'hidden' },
+  header: {
     flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingBottom: 12,
   },
-  safeArea: {
-    flex: 1,
-    paddingHorizontal: Spacing.four,
-    alignItems: 'center',
-    gap: Spacing.three,
-    paddingBottom: BottomTabInset + Spacing.three,
-    maxWidth: MaxContentWidth,
-  },
-  heroSection: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    flex: 1,
-    paddingHorizontal: Spacing.four,
-    gap: Spacing.four,
-  },
-  title: {
-    textAlign: 'center',
-  },
-  code: {
-    textTransform: 'uppercase',
-  },
-  stepContainer: {
-    gap: Spacing.three,
-    alignSelf: 'stretch',
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.four,
-    borderRadius: Spacing.four,
-  },
+  titleBlock: { gap: 2 },
+  date: { fontSize: 13, color: C.textSecondary },
+  title: { fontSize: 30, fontWeight: '700', letterSpacing: -0.5, color: C.text },
+  brand: { fontSize: 15, fontWeight: '700', letterSpacing: 3, color: C.accent },
+  scrim: { flex: 1, backgroundColor: C.scrim },
 });
