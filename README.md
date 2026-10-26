@@ -92,8 +92,8 @@ Atlas/
 │   ├── src/
 │   │   ├── app/                Screens. Each file is a route (Expo Router)
 │   │   │   ├── _layout.tsx       Root layout (one stack, no tabs)
-│   │   │   └── index.tsx         Home screen: chat feed, Macros / mic / Exercises buttons
-│   │   ├── components/atlas/   Home screen parts: chat feed + draft cards, sheets, talk panel
+│   │   │   └── index.tsx         Home screen: chat feed, "Chat with Atlas" composer, Macros / Exercises
+│   │   ├── components/atlas/   Home screen parts: chat feed + draft cards, composer, sheets
 │   │   ├── components/         Other reusable UI (themed text/views, etc.)
 │   │   ├── lib/api.ts          Finds the API's address; typed calls for every endpoint
 │   │   ├── constants/theme.ts  Colors (AtlasColors) and fonts
@@ -126,7 +126,7 @@ Atlas/
 ```
 
 The app has one screen, **Home**: a chat feed where Atlas drafts meals and workouts,
-with **Macros** (left), the **mic** (center), and **Exercises** (right) along the bottom.
+with a **Chat with Atlas** box (type, or tap its small mic) and **Macros** / **Exercises** below it.
 Everything on it comes from the API and database. There is no sign-in yet: the API acts
 as a demo user that `schema.sql` creates.
 

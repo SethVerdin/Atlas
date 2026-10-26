@@ -1,11 +1,12 @@
 import Feather from '@expo/vector-icons/Feather';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 
-export type AtlasIconName = 'macros' | 'exercises' | 'mic' | 'close' | 'check' | 'chevron';
+export type AtlasIconName = 'macros' | 'exercises' | 'mic' | 'send' | 'close' | 'check' | 'chevron';
 
 const featherNames = {
   macros: 'pie-chart',
   mic: 'mic',
+  send: 'arrow-up',
   close: 'x',
   check: 'check',
   chevron: 'chevron-right',

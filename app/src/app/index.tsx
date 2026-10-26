@@ -1,13 +1,13 @@
-import { useCallback, useEffect, useState } from 'react';
-import { KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { BOTTOM_BAR_HEIGHT, BottomBar, type Panel } from '@/components/atlas/bottom-bar';
+import { BottomBar, type Panel } from '@/components/atlas/bottom-bar';
 import { ChatFeed } from '@/components/atlas/chat-feed';
+import { Composer } from '@/components/atlas/composer';
 import { ExercisesSheet } from '@/components/atlas/exercises-sheet';
 import { MacrosSheet } from '@/components/atlas/macros-sheet';
-import { TalkPanel } from '@/components/atlas/talk-panel';
 import { AtlasColors as C } from '@/constants/theme';
 import {
   getExercises,
@@ -30,12 +30,11 @@ const errorText = (e: unknown) => (e instanceof Error ? e.message : 'Something w
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const [panel, setPanel] = useState<Panel | null>(null);
-  const [talkPrefill, setTalkPrefill] = useState('');
+  const composerRef = useRef<TextInput>(null);
+  const [draftText, setDraftText] = useState('');
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [sending, setSending] = useState<string | null>(null);
-  // A message that failed to send; reopening the mic brings it back.
-  const [unsent, setUnsent] = useState('');
   const [chatError, setChatError] = useState<string | null>(null);
 
   const [today, setToday] = useState<Today | null>(null);
@@ -55,25 +54,32 @@ export default function HomeScreen() {
     if (next === 'exercises') getExercises().then(setExercises).catch((e) => setSheetError(errorText(e)));
   }, []);
 
-  const open = (next: Panel, prefill = '') => {
-    setTalkPrefill(prefill);
+  const toggle = (next: Panel) => {
+    if (panel === next) return setPanel(null);
     setPanel(next);
     refreshSheet(next);
   };
-  const toggle = (next: Panel) => (panel === next ? setPanel(null) : open(next, next === 'talk' ? unsent : ''));
   const close = () => setPanel(null);
+
+  /** Closes any sheet and puts the cursor in the composer, optionally with starting text. */
+  const compose = (text?: string) => {
+    setPanel(null);
+    if (text !== undefined) setDraftText(text);
+    composerRef.current?.focus();
+  };
 
   const send = async (text: string) => {
     setPanel(null);
+    setDraftText('');
     setSending(text);
     setChatError(null);
     try {
       const added = await sendMessage(text);
       setMessages((m) => [...m, ...added]);
-      setUnsent('');
     } catch (e) {
       setChatError(errorText(e));
-      setUnsent(text);
+      // Put the message back so it can be sent again without retyping.
+      setDraftText((current) => current || text);
     } finally {
       setSending(null);
     }
@@ -96,46 +102,57 @@ export default function HomeScreen() {
   return (
     <KeyboardAvoidingView style={styles.root} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <View style={styles.column}>
-        <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
-          <View style={styles.titleBlock}>
-            <Text style={styles.date}>{date}</Text>
-            <Text accessibilityRole="header" style={styles.title}>
-              Today
-            </Text>
+        {/* Header and feed; sheets open over this area, above the composer. */}
+        <View style={styles.main}>
+          <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
+            <View style={styles.titleBlock}>
+              <Text style={styles.date}>{date}</Text>
+              <Text accessibilityRole="header" style={styles.title}>
+                Today
+              </Text>
+            </View>
+            <Text style={styles.brand}>ATLAS</Text>
           </View>
-          <Text style={styles.brand}>ATLAS</Text>
+
+          <ChatFeed messages={messages} sending={sending} error={chatError} onSave={save} />
+
+          {panel && (
+            <View style={StyleSheet.absoluteFill}>
+              <Animated.View entering={FadeIn.duration(180)} exiting={FadeOut.duration(150)} style={StyleSheet.absoluteFill}>
+                <Pressable accessibilityLabel="Close" onPress={close} style={styles.scrim} />
+              </Animated.View>
+              {panel === 'macros' && (
+                <MacrosSheet
+                  today={today}
+                  error={sheetError}
+                  top={insets.top + SHEET_TOP_OFFSET}
+                  onClose={close}
+                  onLogMeal={() => compose()}
+                />
+              )}
+              {panel === 'exercises' && (
+                <ExercisesSheet
+                  exercises={exercises}
+                  error={sheetError}
+                  top={insets.top + SHEET_TOP_OFFSET}
+                  onClose={close}
+                  onPick={(name) => compose(`${name} `)}
+                />
+              )}
+            </View>
+          )}
         </View>
 
-        <ChatFeed messages={messages} sending={sending} error={chatError} onSave={save} />
-
-        {panel && (
-          <View style={[StyleSheet.absoluteFill, { bottom: BOTTOM_BAR_HEIGHT + insets.bottom }]}>
-            <Animated.View entering={FadeIn.duration(180)} exiting={FadeOut.duration(150)} style={StyleSheet.absoluteFill}>
-              <Pressable accessibilityLabel="Close" onPress={close} style={styles.scrim} />
-            </Animated.View>
-            {panel === 'macros' && (
-              <MacrosSheet
-                today={today}
-                error={sheetError}
-                top={insets.top + SHEET_TOP_OFFSET}
-                onClose={close}
-                onLogMeal={() => open('talk')}
-              />
-            )}
-            {panel === 'exercises' && (
-              <ExercisesSheet
-                exercises={exercises}
-                error={sheetError}
-                top={insets.top + SHEET_TOP_OFFSET}
-                onClose={close}
-                onPick={(name) => open('talk', `${name} `)}
-              />
-            )}
-            {panel === 'talk' && <TalkPanel initialText={talkPrefill} onCancel={close} onSend={send} />}
-          </View>
-        )}
-
-        <BottomBar active={panel} onPress={toggle} bottomInset={insets.bottom} />
+        <View style={[styles.bottom, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+          <Composer
+            ref={composerRef}
+            value={draftText}
+            onChangeText={setDraftText}
+            onSend={send}
+            busy={sending !== null}
+          />
+          <BottomBar active={panel} onPress={toggle} />
+        </View>
       </View>
     </KeyboardAvoidingView>
   );
@@ -144,6 +161,7 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: C.bg },
   column: { flex: 1, width: '100%', maxWidth: MAX_WIDTH, alignSelf: 'center', overflow: 'hidden' },
+  main: { flex: 1 },
   header: {
     flexDirection: 'row',
     alignItems: 'flex-end',
@@ -156,4 +174,5 @@ const styles = StyleSheet.create({
   title: { fontSize: 30, fontWeight: '700', letterSpacing: -0.5, color: C.text },
   brand: { fontSize: 15, fontWeight: '700', letterSpacing: 3, color: C.accent },
   scrim: { flex: 1, backgroundColor: C.scrim },
+  bottom: { paddingHorizontal: 12, paddingTop: 8, gap: 10, backgroundColor: C.bg },
 });

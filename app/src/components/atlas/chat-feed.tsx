@@ -35,7 +35,7 @@ export function ChatFeed({ messages, sending, error, onSave }: Props) {
       onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: false })}>
       {messages.length === 0 && !sending && (
         <Text style={styles.empty}>
-          Tap the mic and tell Atlas what you ate or lifted, like “bench press 3x8 at 185”.
+          Tell Atlas what you ate or lifted, like “bench press 3x8 at 185”.
         </Text>
       )}
 

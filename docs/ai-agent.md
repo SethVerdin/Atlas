@@ -110,7 +110,7 @@ returned it in the same turn.
     is busy right now"; timeout → "The AI took too long"; anything else → "The AI
     service returned an error". Google's full error is in the API log.
 - **Not built yet:** sign-in (every request acts as the seeded demo user), and in-app
-  speech-to-text on iOS/Android (Expo Go has no speech module; the talk panel takes typed
+  speech-to-text on iOS/Android (Expo Go has no speech module; the composer takes typed
   text, and the keyboard's dictation works. On web it listens via the Web Speech API).
 - **Database fit:** drafts are item-based, matching the `meals` + `meal_items` tables
   (each food keeps its grams, source, and per-100 g values). A `usda` item needs an

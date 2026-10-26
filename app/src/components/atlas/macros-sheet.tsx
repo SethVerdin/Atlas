@@ -9,7 +9,7 @@ type Props = {
   error: string | null;
   top: number;
   onClose: () => void;
-  /** Opens the mic, from the "not logged yet" row. */
+  /** Focuses the composer, from the "not logged yet" row. */
   onLogMeal: () => void;
 };
 
@@ -90,7 +90,7 @@ export function MacrosSheet({ today, error, top, onClose, onLogMeal }: Props) {
               onPress={onLogMeal}
               style={[styles.rowBetween, styles.emptyMeal]}>
               <Text style={styles.secondary14}>{nextMeal} not logged yet</Text>
-              <Text style={styles.secondary13}>Tap the mic</Text>
+              <Text style={styles.secondary13}>Tap to log</Text>
             </Pressable>
           ) : (
             meals.length === 0 && <Text style={styles.secondary14}>No meals saved today.</Text>

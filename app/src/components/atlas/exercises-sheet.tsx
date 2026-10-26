@@ -14,7 +14,7 @@ type Props = {
   error: string | null;
   top: number;
   onClose: () => void;
-  /** Opens the mic with this exercise's name, to log it again. */
+  /** Puts this exercise's name in the composer, to log it again. */
   onPick: (name: string) => void;
 };
 
@@ -46,7 +46,7 @@ export function ExercisesSheet({ exercises, error, top, onClose, onPick }: Props
         {exercises && shown.length === 0 && (
           <Text style={styles.secondary}>
             {exercises.length === 0
-              ? 'No exercises saved yet. Tap the mic and tell Atlas what you lifted.'
+              ? 'No exercises saved yet. Tell Atlas what you lifted.'
               : `No ${filter} exercises saved yet.`}
           </Text>
         )}
