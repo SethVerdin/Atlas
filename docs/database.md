@@ -123,7 +123,7 @@ One meal. Replaces the old `food_logs` table.
 | `status` | `entry_status` | Default `draft`. **Only `saved` meals count toward totals** |
 | `raw_text` | `TEXT` | Required. What the user typed or said |
 | `chat_message_id` | `INT` | The Atlas message that showed this draft. Emptied if the message is deleted |
-| `eaten_at` | `TIMESTAMPTZ` | When the meal was eaten (not when it was saved). Defaults to now |
+| `eaten_at` | `TIMESTAMPTZ` | When the meal was eaten. Defaults to now; the API sets it to the time of Save for now |
 | `created_at` | `TIMESTAMPTZ` | Defaults to now |
 
 ### `meal_items`
@@ -167,7 +167,9 @@ It also adds a **demo user** (`demo@atlas.local`, goals 2,400 kcal / 160 g prote
 
 ### `workout_logs`
 
-One exercise done once, e.g. "3 × 8 at 185 lb".
+One exercise done once, e.g. "3 × 8 at 185 lb". When a session's sets differ (8, 8, 6
+reps), the API stores one row per run of identical sets (2 × 8 and 1 × 6), all with the
+same `chat_message_id`.
 
 | Column | Type | Notes |
 | --- | --- | --- |
@@ -180,7 +182,7 @@ One exercise done once, e.g. "3 × 8 at 185 lb".
 | `status` | `entry_status` | Default `draft`. **Only `saved` logs count toward history and the body diagram** |
 | `raw_text` | `TEXT` | Required. What the user typed or said |
 | `chat_message_id` | `INT` | The Atlas message that showed this draft. Emptied if the message is deleted |
-| `performed_at` | `TIMESTAMPTZ` | When the exercise was done. Defaults to now |
+| `performed_at` | `TIMESTAMPTZ` | When the exercise was done. Defaults to now; the API sets it to the time of Save for now |
 | `created_at` | `TIMESTAMPTZ` | Defaults to now |
 
 ## Design notes
@@ -195,10 +197,10 @@ One exercise done once, e.g. "3 × 8 at 185 lb".
   `estimated` item must have an `estimate_basis`.
 - **Times are stored with their time zone** (`TIMESTAMPTZ`). Group by day using the
   user's `time_zone`, so an 11:30 PM snack doesn't land on the next day.
-- **Body diagram.** Muscle progress is calculated from saved `workout_logs`: each set
-  counts 1 for the exercise's `primary_muscle` and ½ for each of its
-  `secondary_muscles` (e.g. 3 sets of bench = chest 3, triceps 1.5, front delts 1.5).
-  Nothing extra is stored.
+- **Body diagram** (planned; not in the app yet). Muscle progress will be calculated
+  from saved `workout_logs`: each set counts 1 for the exercise's `primary_muscle` and
+  ½ for each of its `secondary_muscles` (e.g. 3 sets of bench = chest 3, triceps 1.5,
+  front delts 1.5). Nothing extra is stored.
 - **Units.** Calories are kcal; protein, carbs, and fat are grams; workout weight is in
   the row's `unit`.
 - **Passwords.** The API stores only a salted hash in `password_hash`. The sign-up and
@@ -229,8 +231,9 @@ only applied when the database is first created.
 `food_logs`). That is harmless on a fresh database, but running the file by hand against
 a database that has data **deletes that data**.
 
-**If your local database was created before this schema,** it still has the old
-`users` and `food_logs` tables. Reset it once (below) to get the new tables.
+**If your local database was created before this schema,** it is missing tables or the
+demo user (the app then shows "Demo user demo@atlas.local is missing"). Reset it once to
+get the new tables.
 
 To check that the tables exist:
 
@@ -238,15 +241,27 @@ To check that the tables exist:
 docker exec -it atlas_db psql -U postgres -d atlas -c "\dt"
 ```
 
-You should see `exercises`, `meal_items`, `meals`, `users`, and `workout_logs`. If you
+You should see `chat_messages`, `exercises`, `meal_items`, `meals`, `usda_foods`, `users`,
+and `workout_logs`. If you
 changed `DB_USER` or `DB_NAME` in `.env`, use those values instead of `postgres` and
 `atlas`.
 
 ## How the API connects
 
 The API reads the same `.env` file and connects with the `DB_HOST`, `DB_PORT`,
-`DB_NAME`, `DB_USER`, and `DB_PASSWORD` settings. It currently has one route that uses
-the database: `GET /health` runs a trivial query to confirm PostgreSQL is reachable.
+`DB_NAME`, `DB_USER`, and `DB_PASSWORD` settings, through one shared pool
+(`api/src/db.ts`). Which code uses which tables:
+
+| Code | Tables |
+| --- | --- |
+| `api/src/user.ts` | `users` (finds the demo user; units, time zone, goals) |
+| `api/src/chat.ts` | `chat_messages` (feed and AI history) |
+| `api/src/drafts.ts` | `meals`, `meal_items`, `workout_logs`, `exercises` (stores drafts, saves them) |
+| `api/src/summary.ts` | saved `meals` + `meal_items` (Macros), saved `workout_logs` + `exercises` (Exercises) |
+| `api/src/agent/usda.ts` | `usda_foods` (USDA cache) |
+| `api/src/agent/runTool.ts` | `exercises` (`find_exercise`), saved meals and workouts (summary and progress tools) |
+
+`GET /health` runs a trivial query to confirm PostgreSQL is reachable:
 
 - Database reachable: `{"ok":true,"db":"up"}`
 - Database unreachable: HTTP 503 with `{"ok":false,"db":"down"}`

@@ -1,5 +1,5 @@
-// Speech-to-text for the talk panel. Expo Go has no speech recognition module,
-// so on iOS and Android the panel takes typed text instead (the keyboard's own
+// Speech-to-text for the composer's mic. Expo Go has no speech recognition module,
+// so on iOS and Android the composer takes typed text instead (the keyboard's own
 // dictation button still works). The web version is in use-speech.web.ts.
 
 export type Speech = {

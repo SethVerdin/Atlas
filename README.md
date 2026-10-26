@@ -112,7 +112,9 @@ Atlas/
 │   └── schema.sql              Tables: users, chat_messages, usda_foods, meals, meal_items,
 │                               exercises, workout_logs; seeds exercises and a demo user
 ├── docs/
-│   └── ai-agent.md             How the AI agent and its context work
+│   ├── ai-agent.md             How the AI agent, its endpoints, and its context work
+│   ├── database.md             Every table and column, and how the schema is loaded
+│   └── database-known-issues.md  Limits of the schema to handle later
 ├── scripts/
 │   ├── setup.mjs               Runs on `npm run setup`
 │   └── dev.mjs                 Runs on `npm run dev`
@@ -124,11 +126,6 @@ Atlas/
 ├── .gitattributes              Line endings; marks lockfiles as generated
 └── .nvmrc                      Node.js version (24)
 ```
-
-The app has one screen, **Home**: a chat feed where Atlas drafts meals and workouts,
-with a **Chat with Atlas** box (type, or tap its small mic) and **Macros** / **Exercises** below it.
-Everything on it comes from the API and database. There is no sign-in yet: the API acts
-as a demo user that `schema.sql` creates.
 
 Each `package.json` needs its `package-lock.json` beside it. The lockfiles pin exact
 package versions so everyone, and CI, installs the same thing. They're long, but
@@ -189,6 +186,26 @@ Press `Ctrl+C` to stop both.
 | `npm run lint` | Lint the API and the app (same as CI) |
 | `npm run typecheck` | Type-check the API and the app (same as CI) |
 
+## Using the app
+
+The app has one screen, **Home**. Everything on it comes from the API and database.
+There is no sign-in yet: the API acts as a demo user that `schema.sql` creates.
+
+- **Chat with Atlas** (the box at the bottom): type what you ate or lifted, or ask a
+  question, and tap the send arrow. Atlas replies in the feed above, with a meal or
+  workout card when it logged something.
+- **Small mic** in the box: in a web browser it listens and types your words in. Expo Go
+  on a phone has no speech-to-text, so there it reminds you to use the keyboard's own
+  dictation key.
+- **Draft cards:** a new meal or workout shows **Draft** with **Edit** and **Save**. Edit
+  changes grams (meals) or sets, reps, and weight (workouts), with totals updating as
+  you type. Nothing counts until you tap Save. Saying a correction ("make that 4 sets")
+  replaces the draft.
+- **Macros** (bottom left): today's calories and protein / carbs / fat against your
+  goals, from saved meals only, plus today's meals.
+- **Exercises** (bottom right): each saved exercise with its last session, filtered by
+  Push / Pull / Legs. Tap one to start a message with its name.
+
 ## Configuration (`.env`)
 
 All settings live in one `.env` file in the repo root, shared by Docker and the API.
@@ -211,7 +228,8 @@ default 5432). `database/schema.sql` is loaded automatically the first time the
 database is created.
 
 - **Check the tables:** `docker exec -it atlas_db psql -U postgres -d atlas -c "\dt"`
-  should list `exercises`, `meal_items`, `meals`, `users`, and `workout_logs`.
+  should list `chat_messages`, `exercises`, `meal_items`, `meals`, `usda_foods`, `users`,
+  and `workout_logs`. See [`docs/database.md`](docs/database.md) for what each holds.
 - **Reset the database** (deletes all local data, then reloads `schema.sql` on the next
   start): `docker compose down -v`, then `npm run db:up`. Do this after changing
   `schema.sql` or `DB_PASSWORD`.
@@ -316,14 +334,19 @@ Never put real secrets in `.env.example`.
 
 ### Chat (AI) errors
 
-The app shows a short message. The real cause is in the terminal's `[api]` log lines
-("Gemini returned an error").
+The app shows a short message. The real cause is in the terminal's `[api]` log line
+with the same message; its `detail` holds Google's full response.
+
+Google's servers are often overloaded, especially on the free tier. They either answer
+503 ("high demand") or leave the request hanging. The API retries each Gemini call up to
+3 times (25 s per attempt, short pauses in between), so a reply can take 15–40 s while
+Google is busy. The messages below appear only when every retry failed.
 
 | App shows | Cause | Fix |
 | --- | --- | --- |
 | "AI is not set up" | No `GEMINI_API_KEY` in `.env`, or the API started before it was added | Add the key, then restart `npm run dev` (the API reads `.env` only at startup) |
-| "The AI is busy right now" | Google rate limit (429) or overloaded servers (503), common on the free tier | Wait a minute and try again |
-| "The AI took too long" | No answer within 60 s | Try again |
+| "The AI is busy right now" | Google rate limit (429) or overloaded servers (500/503/504) on every try | Wait a minute and try again |
+| "The AI took too long" | No answer within 25 s, on every try | Try again. If it keeps happening, switch `GEMINI_MODEL` to a lite model (e.g. `gemini-3.1-flash-lite`), which answers faster |
 | "The AI service returned an error" | Usually a key or project problem; see the log rows below | |
 
 | `[api]` log says | Fix |

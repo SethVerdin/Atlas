@@ -12,7 +12,7 @@ The agent lives in `api/src/agent/`. The routes that use it are `api/src/chat.ts
 | `tools.ts` | Gemini function declarations (6 tools) + Zod schemas to validate the arguments Gemini sends |
 | `loop.ts` | The agent loop for one turn: call Gemini, run tool calls, repeat (up to 5 calls) |
 | `runTool.ts` | Runs one tool call, scoped to the current user. Reads only `saved` rows |
-| `gemini.ts` | Gemini REST call (60 s timeout) and the error messages the app shows |
+| `gemini.ts` | Gemini REST call: 25 s timeout per attempt, retries when Google is busy, and the error messages the app shows |
 | `usda.ts` | `search_foods`: USDA FoodData Central search; results cached in `usda_foods` |
 | `mealDraft.ts` | Turns `draft_meal` arguments into a draft: USDA values or checked estimates, all math in code |
 | `workoutDraft.ts` | Turns `draft_workout` arguments into a draft; exercise IDs are checked against the catalog |
@@ -26,7 +26,8 @@ Gemini is stateless, so every call sends:
 1. **`systemInstruction`**, the same every time (`SYSTEM_PROMPT`).
 2. **`tools`**: `search_foods`, `find_exercise`, `draft_meal`, `draft_workout`,
    `get_nutrition_summary`, `get_progress`. None takes a `userId`: the API scopes
-   every call to the user in the auth token (OWASP API1). None writes data.
+   every call to the current user (OWASP API1). That is the seeded demo user until
+   sign-in exists, then the user in the auth token. None writes data.
 3. **`contents`**: the last 14 stored messages (user text + model replies only),
    then the new message prefixed with fresh session context:
    ```
@@ -91,7 +92,8 @@ returned it in the same turn.
   `@google/genai` is optional if the team prefers the SDK later.
 - **CI:** the agent files are part of the API, so CI lints, type-checks, and builds them
   on every pull request (see the README's Continuous integration section).
-- **Endpoints** (used by the app's home screen, `app/src/app/index.tsx`):
+- **Endpoints** (used by the app's home screen, `app/src/app/index.tsx`, through
+  `app/src/lib/api.ts`):
   - `GET /v1/messages`: the stored feed (last 100), each model message with its draft.
   - `POST /v1/chat` `{ message, timeZone }` → `{ messages: [user, model] }`. History
     is loaded from `chat_messages`, so the app no longer sends it. Errors return
@@ -105,10 +107,16 @@ returned it in the same turn.
     Gemini's internal thinking tokens as well as the reply. At 800, thinking (often
     600+ tokens) left too little room, and replies were cut off mid-sentence. Reply
     length is kept short by the prompt instead.
-  - **Timeout and errors.** Gemini gets 60 s; answers sometimes take 25+ s. Error
-    messages shown in the app: Google 429 (rate limit) and 503 (overloaded) → "The AI
-    is busy right now"; timeout → "The AI took too long"; anything else → "The AI
-    service returned an error". Google's full error is in the API log.
+  - **Timeouts, retries, and errors** (`gemini.ts`). When Google is overloaded it
+    answers 503 ("high demand") or leaves the request hanging, and one turn makes 2–4
+    Gemini calls, so a single hiccup used to fail the whole answer. Each call now has a
+    25 s timeout and is retried up to 3 times (after 1, 2, and 4 s) on timeouts,
+    network errors, and 429/500/503/504. Replies can take 15–40 s while Google is busy.
+    Only if every attempt fails does the app see an error: 429/5xx → "The AI is busy
+    right now"; timeout → "The AI took too long"; any other error → "The AI service
+    returned an error". The API log line carries Google's full response in `detail`.
+  - **Model choice.** In testing, `gemini-3.1-flash-lite` answered each call in about
+    1–8 s, while `gemini-flash-latest` sometimes hung past 90 s under load.
 - **Not built yet:** sign-in (every request acts as the seeded demo user), and in-app
   speech-to-text on iOS/Android (Expo Go has no speech module; the composer takes typed
   text, and the keyboard's dictation works. On web it listens via the Web Speech API).
