@@ -40,7 +40,7 @@ export function ExercisesSheet({ exercises, error, top, onClose, onPick }: Props
         })}
       </View>
 
-      <ScrollView style={styles.scroll} contentContainerStyle={styles.list}>
+      <ScrollView style={styles.scroll} contentContainerStyle={styles.list} showsVerticalScrollIndicator={false}>
         {!exercises &&
           (error ? <Text style={styles.secondary}>{error}</Text> : <ActivityIndicator color={C.textSecondary} />)}
         {exercises && shown.length === 0 && (

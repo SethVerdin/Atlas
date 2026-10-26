@@ -36,7 +36,7 @@ export function MacrosSheet({ today, error, top, onClose, onLogMeal }: Props) {
 
   return (
     <Sheet title="Today's macros" top={top} onClose={onClose}>
-      <ScrollView style={styles.scroll} contentContainerStyle={styles.body}>
+      <ScrollView style={styles.scroll} contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
         <View style={styles.gap10}>
           <View style={styles.calRow}>
             <View style={styles.calNumber}>

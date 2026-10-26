@@ -31,6 +31,7 @@ export function ChatFeed({ messages, sending, error, onSave }: Props) {
       style={styles.scroll}
       contentContainerStyle={styles.content}
       keyboardShouldPersistTaps="handled"
+      showsVerticalScrollIndicator={false}
       onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: false })}>
       {messages.length === 0 && !sending && (
         <Text style={styles.empty}>
