@@ -1,9 +1,9 @@
 import Fastify from "fastify";
-import { Pool } from "pg";
 import { registerChatRoutes } from "./chat";
 import { config } from "./config";
+import { db } from "./db";
+import { registerSummaryRoutes } from "./summary";
 
-const db = new Pool(config.db);
 const app = Fastify({ logger: true });
 
 // Lets the Expo web build (served from another port) call the API during development.
@@ -16,6 +16,7 @@ app.addHook("onRequest", async (req, reply) => {
 });
 
 app.register(registerChatRoutes);
+app.register(registerSummaryRoutes);
 
 // Reports whether the API is up and can reach PostgreSQL.
 app.get("/health", async (_req, reply) => {

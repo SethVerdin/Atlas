@@ -65,12 +65,21 @@ Atlas/
 ├── api/                        Backend: Node.js + Fastify (TypeScript)
 │   ├── src/
 │   │   ├── server.ts           Server entry; GET /health checks the API and database
-│   │   ├── chat.ts             POST /v1/chat: sends a question to Gemini, returns the reply
+│   │   ├── chat.ts             Chat feed: GET /v1/messages, POST /v1/chat, POST /v1/drafts/:id/save
+│   │   ├── drafts.ts           Stores drafts as status 'draft' rows; Save applies edits and marks them saved
+│   │   ├── summary.ts          GET /v1/today (Macros button), GET /v1/exercises (Exercises button)
+│   │   ├── user.ts             Current user (the seeded demo user until sign-in exists)
+│   │   ├── db.ts, time.ts      Shared PostgreSQL pool; time-zone helpers
 │   │   ├── config.ts           Reads settings from the root .env
 │   │   └── agent/              Gemini agent (see docs/ai-agent.md)
 │   │       ├── systemPrompt.ts   Instructions sent to Gemini on every request
 │   │       ├── tools.ts          Tool definitions + argument validation
+│   │       ├── runTool.ts        Runs each tool call for the current user
+│   │       ├── loop.ts           The agent loop: Gemini → tools → Gemini, up to 5 calls
+│   │       ├── gemini.ts         Gemini REST call, timeout, and app-facing errors
+│   │       ├── usda.ts           USDA FoodData Central search + usda_foods cache
 │   │       ├── mealDraft.ts      Nutrient math and estimate checks
+│   │       ├── workoutDraft.ts   Workout drafts (exercise IDs checked against the catalog)
 │   │       └── context.ts        Builds each Gemini request (history + session context)
 │   ├── examples/
 │   │   └── sample-turn.json    One full chat turn as JSON
@@ -82,14 +91,13 @@ Atlas/
 ├── app/                        Mobile app: Expo (React Native, TypeScript)
 │   ├── src/
 │   │   ├── app/                Screens. Each file is a route (Expo Router)
-│   │   │   ├── _layout.tsx       Root layout (tab navigation)
-│   │   │   ├── index.tsx         Home tab
-│   │   │   ├── ask.tsx           Ask tab: ask the AI questions (calls POST /v1/chat)
-│   │   │   └── explore.tsx       Explore tab
-│   │   ├── components/         Reusable UI (themed text/views, tabs, etc.)
-│   │   ├── lib/api.ts          Finds the API's address and calls it
-│   │   ├── constants/theme.ts  Colors and fonts for light and dark mode
-│   │   ├── hooks/              Color scheme and theme hooks
+│   │   │   ├── _layout.tsx       Root layout (one stack, no tabs)
+│   │   │   └── index.tsx         Home screen: chat feed, "Chat with Atlas" composer, Macros / Exercises
+│   │   ├── components/atlas/   Home screen parts: chat feed + draft cards, composer, sheets
+│   │   ├── components/         Other reusable UI (themed text/views, etc.)
+│   │   ├── lib/api.ts          Finds the API's address; typed calls for every endpoint
+│   │   ├── constants/theme.ts  Colors (AtlasColors) and fonts
+│   │   ├── hooks/              Color scheme, theme, and speech-to-text (web only for now)
 │   │   ├── global.css          Font settings for the web version
 │   │   └── expo-types.d.ts     Expo type references (needed for type-checking in CI)
 │   ├── assets/                 App icons, splash screen, and images
@@ -101,9 +109,12 @@ Atlas/
 │   └── AGENTS.md               Expo's notes for AI coding tools
 │
 ├── database/
-│   └── schema.sql              Tables: users, meals, meal_items, exercises, workout_logs
+│   └── schema.sql              Tables: users, chat_messages, usda_foods, meals, meal_items,
+│                               exercises, workout_logs; seeds exercises and a demo user
 ├── docs/
-│   └── ai-agent.md             How the AI agent and its context work
+│   ├── ai-agent.md             How the AI agent, its endpoints, and its context work
+│   ├── database.md             Every table and column, and how the schema is loaded
+│   └── database-known-issues.md  Limits of the schema to handle later
 ├── scripts/
 │   ├── setup.mjs               Runs on `npm run setup`
 │   └── dev.mjs                 Runs on `npm run dev`
@@ -115,9 +126,6 @@ Atlas/
 ├── .gitattributes              Line endings; marks lockfiles as generated
 └── .nvmrc                      Node.js version (24)
 ```
-
-The **Ask** tab is the first Atlas screen. Home and Explore are still Expo's starter
-template and will be replaced with Atlas screens.
 
 Each `package.json` needs its `package-lock.json` beside it. The lockfiles pin exact
 package versions so everyone, and CI, installs the same thing. They're long, but
@@ -157,11 +165,15 @@ npm run dev
 - **App:** Expo shows a QR code. Scan it with Expo Go (Android) or the Camera app (iOS).
   Or press `w` to open it in a web browser, or `a` for an Android emulator.
 
-To try the **Ask** tab, add a Gemini key to `.env` first (`GEMINI_API_KEY=...`, free at
+To chat with Atlas, add a Gemini key to `.env` first (`GEMINI_API_KEY=...`, free at
 https://aistudio.google.com/apikey), then restart `npm run dev`. Without a key the
 screen shows "AI is not set up." The app finds the API on its own: on a phone it uses
 your computer's address on port 3000. To point it somewhere else, set
 `EXPO_PUBLIC_API_URL` in `app/.env`.
+
+**Database created before the home screen was wired up?** Reset it once so it has the
+new tables and the demo user: `docker compose down -v`, then `npm run db:up` (this
+deletes local data). Otherwise the feed shows an error like "Demo user ... is missing".
 
 Press `Ctrl+C` to stop both.
 
@@ -173,6 +185,26 @@ Press `Ctrl+C` to stop both.
 | `npm run db:up` / `npm run db:down` | Start or stop the database |
 | `npm run lint` | Lint the API and the app (same as CI) |
 | `npm run typecheck` | Type-check the API and the app (same as CI) |
+
+## Using the app
+
+The app has one screen, **Home**. Everything on it comes from the API and database.
+There is no sign-in yet: the API acts as a demo user that `schema.sql` creates.
+
+- **Chat with Atlas** (the box at the bottom): type what you ate or lifted, or ask a
+  question, and tap the send arrow. Atlas replies in the feed above, with a meal or
+  workout card when it logged something.
+- **Small mic** in the box: in a web browser it listens and types your words in. Expo Go
+  on a phone has no speech-to-text, so there it reminds you to use the keyboard's own
+  dictation key.
+- **Draft cards:** a new meal or workout shows **Draft** with **Edit** and **Save**. Edit
+  changes grams (meals) or sets, reps, and weight (workouts), with totals updating as
+  you type. Nothing counts until you tap Save. Saying a correction ("make that 4 sets")
+  replaces the draft.
+- **Macros** (bottom left): today's calories and protein / carbs / fat against your
+  goals, from saved meals only, plus today's meals.
+- **Exercises** (bottom right): each saved exercise with its last session, filtered by
+  Push / Pull / Legs. Tap one to start a message with its name.
 
 ## Configuration (`.env`)
 
@@ -186,8 +218,8 @@ variables to `.env.example` with empty or placeholder values.
 | `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER` | Docker, API | Defaults: `localhost`, `5433`, `atlas`, `postgres` |
 | `DB_PASSWORD` | Docker, API | Required. Set it before the first `npm run setup`. Changing it later requires a database reset (below) |
 | `API_HOST`, `API_PORT` | API | Defaults: `0.0.0.0`, `3000` |
-| `GEMINI_API_KEY`, `GEMINI_MODEL` | API | Needed for the Ask tab (`POST /v1/chat`). The API starts without it, but chat returns "AI is not set up." Key from https://aistudio.google.com/apikey. Model defaults to `gemini-flash-latest` |
-| `USDA_API_KEY` | API (later) | Not needed yet. Key from https://fdc.nal.usda.gov/api-key-signup |
+| `GEMINI_API_KEY`, `GEMINI_MODEL` | API | Needed for chat (`POST /v1/chat`). The API starts without it, but chat returns "AI is not set up." Key from https://aistudio.google.com/apikey. Model defaults to `gemini-flash-latest` |
+| `USDA_API_KEY` | API | Used by the agent's food search. Optional: without it the API uses USDA's shared `DEMO_KEY`, which is heavily rate limited. Key from https://fdc.nal.usda.gov/api-key-signup |
 
 ## Database
 
@@ -196,7 +228,8 @@ default 5432). `database/schema.sql` is loaded automatically the first time the
 database is created.
 
 - **Check the tables:** `docker exec -it atlas_db psql -U postgres -d atlas -c "\dt"`
-  should list `exercises`, `meal_items`, `meals`, `users`, and `workout_logs`.
+  should list `chat_messages`, `exercises`, `meal_items`, `meals`, `usda_foods`, `users`,
+  and `workout_logs`. See [`docs/database.md`](docs/database.md) for what each holds.
 - **Reset the database** (deletes all local data, then reloads `schema.sql` on the next
   start): `docker compose down -v`, then `npm run db:up`. Do this after changing
   `schema.sql` or `DB_PASSWORD`.
@@ -295,20 +328,25 @@ Never put real secrets in `.env.example`.
   `npm run dev:api` in one terminal and `npx expo start --tunnel` inside `app/` in another.
   With a tunnel, the app can't find the API by itself: also set `EXPO_PUBLIC_API_URL` in
   `app/.env` to an address your phone can reach.
-- **Phone loads the app, but Ask says "Can't reach the Atlas API"**: Windows Firewall may
+- **Phone loads the app, but the feed says "Can't reach the Atlas API"**: Windows Firewall may
   be blocking port 3000. When Windows asks about Node.js, allow it on **Private
   networks**. Or test in the browser (press `w`).
 
-### Ask tab (AI) errors
+### Chat (AI) errors
 
-The app shows a short message. The real cause is in the terminal's `[api]` log lines
-("Gemini returned an error").
+The app shows a short message. The real cause is in the terminal's `[api]` log line
+with the same message; its `detail` holds Google's full response.
+
+Google's servers are often overloaded, especially on the free tier. They either answer
+503 ("high demand") or leave the request hanging. The API retries each Gemini call up to
+3 times (25 s per attempt, short pauses in between), so a reply can take 15–40 s while
+Google is busy. The messages below appear only when every retry failed.
 
 | App shows | Cause | Fix |
 | --- | --- | --- |
 | "AI is not set up" | No `GEMINI_API_KEY` in `.env`, or the API started before it was added | Add the key, then restart `npm run dev` (the API reads `.env` only at startup) |
-| "The AI is busy right now" | Google rate limit (429) or overloaded servers (503), common on the free tier | Wait a minute and try again |
-| "The AI took too long" | No answer within 60 s | Try again |
+| "The AI is busy right now" | Google rate limit (429) or overloaded servers (500/503/504) on every try | Wait a minute and try again |
+| "The AI took too long" | No answer within 25 s, on every try | Try again. If it keeps happening, switch `GEMINI_MODEL` to a lite model (e.g. `gemini-3.1-flash-lite`), which answers faster |
 | "The AI service returned an error" | Usually a key or project problem; see the log rows below | |
 
 | `[api]` log says | Fix |
