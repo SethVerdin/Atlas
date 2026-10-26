@@ -83,7 +83,9 @@ export function buildChatRequest(history: StoredMessage[], message: string, sess
     contents,
     generationConfig: {
       temperature: 0.4, // lower = more consistent food parsing and estimates
-      maxOutputTokens: 800,
+      // Includes the model's internal "thinking" tokens, not just the reply, so it
+      // must be well above the reply length (the prompt keeps replies short).
+      maxOutputTokens: 4096,
     },
   };
 }

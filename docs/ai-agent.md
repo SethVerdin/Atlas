@@ -74,14 +74,37 @@ returned it in the same turn.
 
 ## Integration notes for the team
 
-- **Packages:** `zod` (v4) is installed in `api/package.json`. `@google/genai` (for
-  the Gemini call) is not installed yet; add it with `npm install @google/genai` in
-  `api/` when the chat endpoint is built.
+- **Packages:** `zod` (v4) is installed in `api/package.json`. The Gemini call uses
+  Node's built-in `fetch` against the REST API, so no Google SDK is needed.
+  `@google/genai` is optional if the team prefers the SDK later.
 - **CI:** the agent files are part of the API, so CI lints, type-checks, and builds them
   on every pull request (see the README's Continuous integration section).
-- **Not built yet:** the `POST /v1/chat` handler and agent loop, the tool
-  implementations (`search_foods`, etc.), and the USDA cache. The API currently has
-  only `GET /health`.
+- **Built (first version):** `POST /v1/chat` in `api/src/chat.ts`, used by the app's
+  Ask tab (`app/src/app/ask.tsx`). It takes `{ message, history, timeZone, units }`,
+  builds the request with `buildChatRequest` and `SYSTEM_PROMPT`, and returns
+  `{ reply }`. Errors return `{ error }` (400 bad input, 503 no `GEMINI_API_KEY`,
+  502 Gemini failure).
+  - It does **not** send tool declarations yet, because the tools aren't implemented.
+  - **Temporary "no tools" note.** `SYSTEM_PROMPT` tells Gemini to call tools
+    (`search_foods`, `get_nutrition_summary`, ...). Without tool declarations, Gemini
+    still tries and replies with a function call and no text, which the app showed as
+    "The AI didn't return an answer". So `chat.ts` appends `NO_TOOLS_NOTE` to the system
+    instruction. It tells Gemini to answer in plain text, give general advice (it can't
+    see the user's logs), never claim to have logged anything, and give labeled
+    estimates for meals, or ask one question when the food is too vague. **Remove
+    `NO_TOOLS_NOTE` when tools are sent.** If Gemini still attempts a call, the API
+    logs `attemptedTools` with the "Empty Gemini reply" warning.
+  - **Output cap.** `maxOutputTokens` (in `context.ts`) is 4096 because it counts
+    Gemini's internal thinking tokens as well as the reply. At 800, thinking (often
+    600+ tokens) left too little room, and replies were cut off mid-sentence. Reply
+    length is kept short by the prompt instead.
+  - **Timeout and errors.** Gemini gets 60 s; answers sometimes take 25+ s. Error
+    messages shown in the app: Google 429 (rate limit) and 503 (overloaded) → "The AI
+    is busy right now"; timeout → "The AI took too long"; anything else → "The AI
+    service returned an error". Google's full error is in the API log.
+  - History comes from the app for now (no auth or stored messages yet).
+- **Not built yet:** the agent loop (tool calls), the tool implementations
+  (`search_foods`, etc.), the USDA cache, auth, and storing chat history.
 - **Database fit:** drafts are item-based, matching the `meals` + `meal_items` tables
   (each food keeps its grams, source, and per-100 g values). A `usda` item needs an
   `fdc_id` and an `estimated` item needs an `estimate_basis`. See `docs/database.md`.
@@ -89,6 +112,9 @@ returned it in the same turn.
 
 ## Open items
 
+- Markdown in replies: Gemini answers in Markdown, but the Ask screen shows plain text,
+  so `**bold**` appears with asterisks. Either render Markdown in the app or tell
+  Gemini in the prompt to reply without Markdown.
 - Alcohol: the Atwater check rejects drinks (7 kcal/g alcohol). Add `alcohol_g` or exempt beverages.
 - An AI test set, per the evaluation's Testing Strategy: foods that should use USDA,
   foods that should be estimated, and foods that should trigger a follow-up.
