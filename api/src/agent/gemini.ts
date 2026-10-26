@@ -26,32 +26,52 @@ export class GeminiError extends Error {
   }
 }
 
+// When Google is overloaded it either answers 503 right away or leaves the request
+// hanging. A turn makes several calls, so one hiccup would fail the whole answer:
+// each call gets a short timeout and is retried a few times with a growing pause.
+const ATTEMPT_TIMEOUT_MS = 25_000;
+const RETRY_DELAYS_MS = [1_000, 2_000, 4_000]; // up to 4 attempts in total
+// 429 = rate limit, 500/503/504 = Google-side trouble. All usually pass quickly.
+const RETRYABLE_STATUS = new Set([429, 500, 503, 504]);
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 export async function generateContent(body: unknown): Promise<GeminiContent> {
   if (!config.gemini.apiKey) {
     throw new GeminiError("AI is not set up. Add GEMINI_API_KEY to .env and restart the API.", 503);
   }
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(config.gemini.model)}:generateContent`;
 
-  let res: Response;
-  try {
-    res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "x-goog-api-key": config.gemini.apiKey },
-      body: JSON.stringify(body),
-      // Gemini can "think" for a while before answering; 30 s was sometimes too short.
-      signal: AbortSignal.timeout(60_000),
+  let res: Response | undefined;
+  let lastError: GeminiError | undefined;
+  for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
+    if (attempt > 0) await sleep(RETRY_DELAYS_MS[attempt - 1]);
+    try {
+      res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-goog-api-key": config.gemini.apiKey },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(ATTEMPT_TIMEOUT_MS),
+      });
+    } catch (err) {
+      const timedOut = err instanceof Error && err.name === "TimeoutError";
+      const message = timedOut ? "The AI took too long to answer. Try again." : "Could not reach the AI service. Try again.";
+      lastError = new GeminiError(message, 502, { attempts: attempt + 1, err });
+      res = undefined;
+      continue;
+    }
+    if (res.ok || !RETRYABLE_STATUS.has(res.status)) break;
+    lastError = new GeminiError("The AI is busy right now. Wait a moment and try again.", 502, {
+      attempts: attempt + 1,
+      status: res.status,
+      body: await res.text(),
     });
-  } catch (err) {
-    const timedOut = err instanceof Error && err.name === "TimeoutError";
-    const message = timedOut ? "The AI took too long to answer. Try again." : "Could not reach the AI service. Try again.";
-    throw new GeminiError(message, 502, err);
+    res = undefined;
   }
 
+  if (!res) throw lastError!;
   if (!res.ok) {
-    // 429 = rate limit, 503 = Google's servers are overloaded. Both are temporary.
-    const busy = res.status === 429 || res.status === 503;
-    const message = busy ? "The AI is busy right now. Wait a moment and try again." : "The AI service returned an error.";
-    throw new GeminiError(message, 502, { status: res.status, body: await res.text() });
+    throw new GeminiError("The AI service returned an error.", 502, { status: res.status, body: await res.text() });
   }
 
   const data = (await res.json()) as {
