@@ -65,6 +65,7 @@ Atlas/
 ├── api/                        Backend: Node.js + Fastify (TypeScript)
 │   ├── src/
 │   │   ├── server.ts           Server entry; GET /health checks the API and database
+│   │   ├── chat.ts             POST /v1/chat: sends a question to Gemini, returns the reply
 │   │   ├── config.ts           Reads settings from the root .env
 │   │   └── agent/              Gemini agent (see docs/ai-agent.md)
 │   │       ├── systemPrompt.ts   Instructions sent to Gemini on every request
@@ -83,8 +84,10 @@ Atlas/
 │   │   ├── app/                Screens. Each file is a route (Expo Router)
 │   │   │   ├── _layout.tsx       Root layout (tab navigation)
 │   │   │   ├── index.tsx         Home tab
+│   │   │   ├── ask.tsx           Ask tab: ask the AI questions (calls POST /v1/chat)
 │   │   │   └── explore.tsx       Explore tab
 │   │   ├── components/         Reusable UI (themed text/views, tabs, etc.)
+│   │   ├── lib/api.ts          Finds the API's address and calls it
 │   │   ├── constants/theme.ts  Colors and fonts for light and dark mode
 │   │   ├── hooks/              Color scheme and theme hooks
 │   │   ├── global.css          Font settings for the web version
@@ -113,8 +116,8 @@ Atlas/
 └── .nvmrc                      Node.js version (24)
 ```
 
-The app screens are currently Expo's starter template (Home and Explore tabs) and
-will be replaced with Atlas screens.
+The **Ask** tab is the first Atlas screen. Home and Explore are still Expo's starter
+template and will be replaced with Atlas screens.
 
 Each `package.json` needs its `package-lock.json` beside it. The lockfiles pin exact
 package versions so everyone, and CI, installs the same thing. They're long, but
@@ -154,6 +157,12 @@ npm run dev
 - **App:** Expo shows a QR code. Scan it with Expo Go (Android) or the Camera app (iOS).
   Or press `w` to open it in a web browser, or `a` for an Android emulator.
 
+To try the **Ask** tab, add a Gemini key to `.env` first (`GEMINI_API_KEY=...`, free at
+https://aistudio.google.com/apikey), then restart `npm run dev`. Without a key the
+screen shows "AI is not set up." The app finds the API on its own: on a phone it uses
+your computer's address on port 3000. To point it somewhere else, set
+`EXPO_PUBLIC_API_URL` in `app/.env`.
+
 Press `Ctrl+C` to stop both.
 
 | Command | What it does |
@@ -177,7 +186,7 @@ variables to `.env.example` with empty or placeholder values.
 | `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER` | Docker, API | Defaults: `localhost`, `5433`, `atlas`, `postgres` |
 | `DB_PASSWORD` | Docker, API | Required. Set it before the first `npm run setup`. Changing it later requires a database reset (below) |
 | `API_HOST`, `API_PORT` | API | Defaults: `0.0.0.0`, `3000` |
-| `GEMINI_API_KEY`, `GEMINI_MODEL` | API (later) | Not needed yet. Key from https://aistudio.google.com/apikey |
+| `GEMINI_API_KEY`, `GEMINI_MODEL` | API | Needed for the Ask tab (`POST /v1/chat`). The API starts without it, but chat returns "AI is not set up." Key from https://aistudio.google.com/apikey. Model defaults to `gemini-flash-latest` |
 | `USDA_API_KEY` | API (later) | Not needed yet. Key from https://fdc.nal.usda.gov/api-key-signup |
 
 ## Database
@@ -277,6 +286,38 @@ Never put real secrets in `.env.example`.
   `npm run setup` or copy `.env.example` to `.env`.
 - **Port 5433, 3000, or 8081 already in use**: another program is using it. Stop it, or
   change `DB_PORT` / `API_PORT` in `.env`.
+- **PowerShell: "npm.ps1 cannot be loaded because running scripts is disabled"**:
+  Windows blocks PowerShell scripts by default. Use `npm.cmd` instead of `npm` (for
+  example `npm.cmd run dev`), or use Command Prompt or Git Bash. To fix it permanently
+  for your user: `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`.
 - **Phone can't load the app**: make sure your phone and computer are on the same Wi-Fi.
   On restrictive networks (e.g. campus Wi-Fi), stop `npm run dev` and run
   `npm run dev:api` in one terminal and `npx expo start --tunnel` inside `app/` in another.
+  With a tunnel, the app can't find the API by itself: also set `EXPO_PUBLIC_API_URL` in
+  `app/.env` to an address your phone can reach.
+- **Phone loads the app, but Ask says "Can't reach the Atlas API"**: Windows Firewall may
+  be blocking port 3000. When Windows asks about Node.js, allow it on **Private
+  networks**. Or test in the browser (press `w`).
+
+### Ask tab (AI) errors
+
+The app shows a short message. The real cause is in the terminal's `[api]` log lines
+("Gemini returned an error").
+
+| App shows | Cause | Fix |
+| --- | --- | --- |
+| "AI is not set up" | No `GEMINI_API_KEY` in `.env`, or the API started before it was added | Add the key, then restart `npm run dev` (the API reads `.env` only at startup) |
+| "The AI is busy right now" | Google rate limit (429) or overloaded servers (503), common on the free tier | Wait a minute and try again |
+| "The AI took too long" | No answer within 60 s | Try again |
+| "The AI service returned an error" | Usually a key or project problem; see the log rows below | |
+
+| `[api]` log says | Fix |
+| --- | --- |
+| `Gemini API has not been used in project … or it is disabled` (`SERVICE_DISABLED`) | Open the link in the message, click **Enable**, wait a few minutes. Or create a key in AI Studio, which enables it automatically |
+| `API_KEY_SERVICE_BLOCKED` | The key is restricted to other APIs. In Google Cloud Console → Credentials, add **Generative Language API** to the key's allowed APIs, or create a new key in AI Studio |
+| `402` `prepayment credits are depleted` | The key's project is on prepaid billing with no credits. Use a key from a project without billing (free tier), or add credits |
+| `The caller does not have permission` | The key or its project was deleted or changed. Check https://aistudio.google.com/apikey and create a new key if needed |
+| `model not found` / `404` | `GEMINI_MODEL` isn't available to your key. Copy an exact Flash model name from AI Studio into `.env` |
+
+After changing `.env`, restart `npm run dev`. Use test messages only: on the free tier,
+Google may use prompts to improve its products.

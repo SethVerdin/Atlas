@@ -20,4 +20,9 @@ export const config = {
     user: process.env.DB_USER ?? "postgres",
     password: required("DB_PASSWORD"),
   },
+  // Optional: the API starts without a key, and /v1/chat returns 503 until one is set.
+  gemini: {
+    apiKey: process.env.GEMINI_API_KEY ?? "",
+    model: process.env.GEMINI_MODEL || "gemini-flash-latest",
+  },
 };
