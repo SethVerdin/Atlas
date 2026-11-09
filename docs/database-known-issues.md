@@ -56,9 +56,13 @@ are **not** handled by the schema and need care in code or a later change.
    Exercises list ("Last: …") still use each row's own unit.
    *Later fix:* store everything in kg and convert only for display.
 
-7. **One row per exercise, not per set.** `sets`, `reps`, `weight` describe all sets the
-   same way. "3 × 8, last set 6 reps" or a drop set can't be recorded exactly.
-   *Later fix:* an `exercise_sets` table with one row per set.
+7. **Sets that differ (8, 8, 6 reps; drop sets).** A `workout_logs` row's `sets`, `reps`,
+   and `weight` describe all its sets the same way.
+   *Status:* handled without a schema change. `api/src/drafts.ts` stores one row per run
+   of identical sets, all with the same `chat_message_id`: 8, 8, 6 reps become 2 × 8 and
+   1 × 6, and a drop set becomes one row per weight. `log_id` keeps the order.
+   *Later fix (only if needed):* an `exercise_sets` table, for per-set details such as
+   RPE or rest times.
 
 8. **Deleting an exercise that has history.** Deleting is blocked while workout logs use
    it (the foreign key has no cascade). The app needs a "hide" option instead.
@@ -82,7 +86,7 @@ are **not** handled by the schema and need care in code or a later change.
 
 | Feature | What to add |
 | --- | --- |
-| Per-set detail | `exercise_sets` table (see 7) |
+| Per-set details (RPE, rest times) | `exercise_sets` table (see 7) |
 | Goal history (chart goal changes over time) | `goals` table with start dates |
 | Grouping exercises into workout sessions | `workouts` table |
 | Many exercises sharing complex muscle data | `muscle_groups` + `exercise_muscles` tables, replacing the muscle columns |
