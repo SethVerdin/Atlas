@@ -1,14 +1,8 @@
--- Atlas database schema
--- Loaded automatically the first time the database is created (empty Docker volume).
+-- 001: the starting schema (formerly database/schema.sql).
+-- Applied by the migration runner (api/src/migrations.ts). Never edit a migration
+-- after it is merged: add a new numbered file instead (docs/database.md, "Migrations").
 -- See docs/database.md for what each table is for, and
 -- docs/database-known-issues.md for limits to handle later.
---
--- WARNING: this file drops and recreates everything. Running it by hand against a
--- database that has data deletes that data.
-
-DROP TABLE IF EXISTS workout_logs, exercises, meal_items, meals, chat_messages, usda_foods, food_logs, users CASCADE;
-DROP TYPE IF EXISTS entry_status, meal_type, nutrient_source, weight_unit,
-    exercise_category, muscle CASCADE;
 
 -- Fixed lists. The database rejects any value not listed here (no typos).
 CREATE TYPE entry_status      AS ENUM ('draft', 'saved');

@@ -8,7 +8,8 @@
     "start": "node dist/src/server.js",
     "build": "tsc",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "migrate": "tsx src/migrate.ts"
   },
   "engines": {
     "node": ">=24"

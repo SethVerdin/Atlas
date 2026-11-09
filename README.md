@@ -64,7 +64,9 @@ checks in [`api/src/agent/mealDraft.ts`](api/src/agent/mealDraft.ts). See
 Atlas/
 ├── api/                        Backend: Node.js + Fastify (TypeScript)
 │   ├── src/
-│   │   ├── server.ts           Server entry; GET /health checks the API and database
+│   │   ├── server.ts           Server entry; GET /health checks the API, database, and migrations
+│   │   ├── migrations.ts       Migration runner for database/migrations
+│   │   ├── migrate.ts          CLI: npm run db:migrate, npm run db:new-migration
 │   │   ├── chat.ts             Chat feed: GET /v1/messages, POST /v1/chat, POST /v1/drafts/:id/save
 │   │   ├── drafts.ts           Stores drafts as status 'draft' rows; Save applies edits and marks them saved
 │   │   ├── summary.ts          GET /v1/today (Macros button), GET /v1/exercises (Exercises button)
@@ -109,8 +111,10 @@ Atlas/
 │   └── AGENTS.md               Expo's notes for AI coding tools
 │
 ├── database/
-│   └── schema.sql              Tables: users, chat_messages, usda_foods, meals, meal_items,
-│                               exercises, workout_logs; seeds exercises and a demo user
+│   └── migrations/             Numbered schema changes, applied in order (docs/database.md)
+│       └── 001_initial_schema.sql  Tables: users, chat_messages, usda_foods, meals,
+│                                   meal_items, exercises, workout_logs; seeds exercises
+│                                   and a demo user
 ├── docs/
 │   ├── ai-agent.md             How the AI agent, its endpoints, and its context work
 │   ├── database.md             Every table and column, and how the schema is loaded
@@ -156,9 +160,10 @@ npm run dev
 1. checks that Node.js and Docker are installed and running
 2. creates `.env` from `.env.example` (if you don't have one yet)
 3. installs dependencies for `api/` and `app/`
-4. starts PostgreSQL and, the first time, loads `database/schema.sql`
+4. starts PostgreSQL
+5. applies the database migrations in `database/migrations/`
 
-`npm run dev` starts both servers in one terminal:
+`npm run dev` applies any new migrations, then starts both servers in one terminal:
 
 - **API** at http://localhost:3000. Open http://localhost:3000/health and you should see
   `{"ok":true,"db":"up"}`.
@@ -171,10 +176,10 @@ screen shows "AI is not set up." The app finds the API on its own: on a phone it
 your computer's address on port 3000. To point it somewhere else, set
 `EXPO_PUBLIC_API_URL` in `app/.env`.
 
-**Database created from an older `schema.sql`?** The API warns "Local database is out of
-date" when it starts, `/health` answers `{"ok":false,"db":"outdated",...}`, and the app
-shows errors such as "Something went wrong (HTTP 500)". Run `npm run db:reset` once to
-rebuild it with the current tables and the demo user (this deletes local data).
+**Pulled a schema change?** `npm run dev` applies new migrations for you and keeps your
+data. If you start only the API (`npm run dev:api`), it warns "Database is missing
+migrations" and `/health` answers `{"ok":false,"db":"outdated",...}`: run
+`npm run db:migrate`.
 
 Press `Ctrl+C` to stop both.
 
@@ -184,14 +189,16 @@ Press `Ctrl+C` to stop both.
 | `npm run dev` | Start the API and the app |
 | `npm run dev:api` / `npm run dev:app` | Start only one of them |
 | `npm run db:up` / `npm run db:down` | Start or stop the database |
-| `npm run db:reset` | Delete the local database and rebuild it from `schema.sql` |
+| `npm run db:migrate` | Apply new database migrations (keeps data) |
+| `npm run db:new-migration -- <name>` | Create the next numbered migration file |
+| `npm run db:reset` | Delete the local database and rebuild it from the migrations |
 | `npm run lint` | Lint the API and the app (same as CI) |
 | `npm run typecheck` | Type-check the API and the app (same as CI) |
 
 ## Using the app
 
 The app has one screen, **Home**. Everything on it comes from the API and database.
-There is no sign-in yet: the API acts as a demo user that `schema.sql` creates.
+There is no sign-in yet: the API acts as a demo user that the first migration creates.
 
 - **Chat with Atlas** (the box at the bottom): type what you ate or lifted, or ask a
   question, and tap the send arrow. Atlas replies in the feed above, with a meal or
@@ -226,15 +233,20 @@ variables to `.env.example` with empty or placeholder values.
 ## Database
 
 PostgreSQL runs in Docker as a container named `atlas_db` on **port 5433** (not the
-default 5432). `database/schema.sql` is loaded automatically the first time the
-database is created.
+default 5432). The tables come from numbered **migration files** in
+`database/migrations/`. Each runs once per database, so schema changes keep your data.
 
+- **Change the schema:** `npm run db:new-migration -- <name>` creates the next numbered
+  file. Write the SQL, run `npm run db:migrate`, and commit the file. **Never edit a
+  migration after it is merged**; add a new one. Details and rules:
+  [Migrations](docs/database.md#migrations).
 - **Check the tables:** `docker exec -it atlas_db psql -U postgres -d atlas -c "\dt"`
-  should list `chat_messages`, `exercises`, `meal_items`, `meals`, `usda_foods`, `users`,
-  and `workout_logs`. See [`docs/database.md`](docs/database.md) for what each holds.
-- **Reset the database** (deletes all local data and reloads `schema.sql`):
-  `npm run db:reset`. Do this after `schema.sql` or `DB_PASSWORD` changes, including
-  when you pull someone else's schema change.
+  should list `chat_messages`, `exercises`, `meal_items`, `meals`, `schema_migrations`,
+  `usda_foods`, `users`, and `workout_logs`. See [`docs/database.md`](docs/database.md)
+  for what each holds.
+- **Reset the database** (deletes all local data, then applies every migration):
+  `npm run db:reset`. Only needed after changing `DB_PASSWORD`, after editing your own
+  unmerged migration, or when `db:migrate` says the database can't be upgraded.
 - **Database tools** (DBeaver, pgAdmin): host `localhost`, port `5433`, database `atlas`,
   user `postgres`, and the password from your `.env`.
 
@@ -258,6 +270,7 @@ Node 24 (from `.nvmrc`):
 | | Lint (ESLint) | Common mistakes and bad patterns, e.g. unused variables |
 | | Type-check (`tsc --noEmit`) | TypeScript type errors |
 | | Build (`tsc`) | Code that doesn't compile to runnable JavaScript |
+| | Migrations | A migration that fails on an empty PostgreSQL, or one that applies twice |
 | | Validate `docker-compose.yml` | A broken Docker file, or one out of sync with `.env.example` |
 | `app` | `npm ci` | Same as above, for the app |
 | | Lint (`expo lint`) | Mistakes plus React rules |
@@ -273,7 +286,8 @@ the log. When both checks are green, the PR is ready for review.
 
 - **Run tests.** There are none yet. When there are, add an `npm test` step to the
   matching job in `ci.yml`.
-- **Start the app or database.** It checks that the code is valid, not that features work.
+- **Start the app.** It checks that the code is valid, not that features work. (The
+  `api` check starts an empty PostgreSQL only to apply the migrations.)
 - **Deploy anything.**
 - **Block merges on its own.** Until a repo admin completes the steps below, a red check
   is only a warning.

@@ -1,4 +1,4 @@
-// `npm run dev`: starts the API and the Expo app together.
+// `npm run dev`: applies database migrations, then starts the API and the Expo app together.
 // Expo gets the terminal (so its QR code and keyboard shortcuts work); the API runs
 // alongside it and its logs are interleaved. Ctrl+C or quitting Expo stops both.
 import { spawn, spawnSync } from "node:child_process";
@@ -6,6 +6,11 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+
+// Apply new database migrations first (e.g. a teammate's schema change). If the
+// database is down or a migration fails, start anyway: the API reports it in /health.
+const migrate = spawnSync("npm --prefix api run --silent migrate", { cwd: root, stdio: "inherit", shell: true });
+if (migrate.status !== 0) console.error("[dev] Database migrations didn't run (see above). Starting anyway.\n");
 
 const api = spawn("npm --prefix api run dev", { cwd: root, stdio: ["ignore", "inherit", "inherit"], shell: true });
 const app = spawn("npm --prefix app run start", { cwd: root, stdio: "inherit", shell: true });

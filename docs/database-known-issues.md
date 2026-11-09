@@ -45,7 +45,7 @@ are **not** handled by the schema and need care in code or a later change.
    *Status:* partly handled. `find_exercise` lists built-in matches first, and a new name
    is matched to a built-in exercise of the same name (ignoring case) before a custom
    one is created. Near-misses ("flat bench") still depend on the AI picking the
-   built-in, so `schema.sql` seeds common lifts.
+   built-in, so `001_initial_schema.sql` seeds common lifts.
 
 ## Known limits of the simple design
 
@@ -68,10 +68,12 @@ are **not** handled by the schema and need care in code or a later change.
 
 ## Process
 
-10. **Re-running `schema.sql` deletes all data.** It starts with `DROP TABLE`. That's fine
-   while there's only test data. Once real data exists, make changes as small numbered
-   migration files (e.g. `002_add_exercise_archive.sql`) instead of re-running the
-   whole schema.
+10. **Re-running `schema.sql` deletes all data.** It started with `DROP TABLE`, so every
+   schema change meant resetting everyone's database.
+   *Status:* handled. The schema is now built by numbered migration files in
+   `database/migrations/`, and each runs once per database (see
+   [Migrations](database.md#migrations)). Schema changes are new files that keep
+   existing data. Never edit a merged migration.
 
 ## Left out on purpose (add when a feature needs them)
 

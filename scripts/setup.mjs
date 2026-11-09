@@ -1,5 +1,6 @@
 // One-time (and safe to re-run) local setup: `npm run setup`
-// 1. Checks Node and Docker  2. Creates .env  3. Installs dependencies  4. Starts PostgreSQL
+// 1. Checks Node and Docker  2. Creates .env  3. Installs dependencies
+// 4. Starts PostgreSQL  5. Applies database migrations
 import { spawnSync } from "node:child_process";
 import { copyFileSync, existsSync } from "node:fs";
 import path from "node:path";
@@ -51,8 +52,11 @@ for (const dir of ["api", "app"]) {
   run("npm ci", path.join(root, dir));
 }
 
-step("Starting PostgreSQL (first run also loads database/schema.sql)");
+step("Starting PostgreSQL");
 run("docker compose up -d --wait");
+
+step("Applying database migrations (database/migrations)");
+run("npm --prefix api run --silent migrate");
 
 console.log(`
 Setup complete.

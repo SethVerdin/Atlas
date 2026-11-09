@@ -1,7 +1,8 @@
 # Atlas database
 
 How the local PostgreSQL database is set up and what is in it. The setup lives in
-`docker-compose.yml` and the tables in `database/schema.sql`.
+`docker-compose.yml` and the tables in numbered migration files in
+`database/migrations/` (see [Migrations](#migrations)).
 
 For the quick-start commands and troubleshooting, see the
 [Database](../README.md#database) section of the README. This page explains what you
@@ -157,10 +158,11 @@ Built-in exercises (no `user_id`) and each user's own.
 | `secondary_muscles` | `muscle[]` | Helper muscles, e.g. `{triceps, front_delts}`. Default empty |
 | `created_at` | `TIMESTAMPTZ` | Defaults to now |
 
-`schema.sql` adds built-in exercises with their muscles: the five from the mockup (Bench
-Press, Overhead Press, Back Squat, Romanian Deadlift, Pull-up) plus common lifts (Incline
-Bench Press, Dip, Push-up, Barbell Row, Lat Pulldown, Deadlift, Bicep Curl, Leg Press,
-Lunge, Plank), so the AI matches them instead of creating duplicates (known issue 5).
+`001_initial_schema.sql` adds built-in exercises with their muscles: the five from the
+mockup (Bench Press, Overhead Press, Back Squat, Romanian Deadlift, Pull-up) plus common
+lifts (Incline Bench Press, Dip, Push-up, Barbell Row, Lat Pulldown, Deadlift, Bicep Curl,
+Leg Press, Lunge, Plank), so the AI matches them instead of creating duplicates (known
+issue 5).
 
 It also adds a **demo user** (`demo@atlas.local`, goals 2,400 kcal / 160 g protein /
 260 g carbs / 80 g fat). There is no sign-in yet, so the API acts as this user.
@@ -206,15 +208,70 @@ same `chat_message_id`.
 - **Passwords.** The API stores only a salted hash in `password_hash`. The sign-up and
   login code that does the hashing is not written yet.
 
-## How the schema gets loaded
+## Migrations
 
-`docker-compose.yml` mounts `database/schema.sql` into the container's
-`/docker-entrypoint-initdb.d/` folder. PostgreSQL runs files in that folder **only the
-first time the database is created**, when the `pgdata` volume is empty.
+The schema is built by small numbered SQL files in `database/migrations/`, applied in
+order by a runner (`api/src/migrations.ts`). Each file runs **once** per database, so
+a schema change never wipes your data: when you pull a teammate's new migration, only
+that file runs.
 
-This has one important consequence: **editing `schema.sql` does not change a database
-that already exists.** Teammates have to reset their local database to pick up a schema
-change (see below).
+```
+database/migrations/
+├── 001_initial_schema.sql      all tables, types, built-in exercises, demo user
+└── 002_...sql                  each later change, one file each
+```
+
+| Command | What it does |
+| --- | --- |
+| `npm run db:migrate` | Applies every migration this database doesn't have yet |
+| `npm run db:new-migration -- <name>` | Creates the next numbered file, e.g. `002_add_exercise_archive.sql` |
+
+You rarely run `db:migrate` yourself: `npm run setup`, `npm run dev`, and
+`npm run db:reset` run it first. (`npm run dev:api` doesn't; the API then warns, see
+below.)
+
+### How it works
+
+- The runner records each applied file in the `schema_migrations` table (file name,
+  checksum of its contents, time applied).
+- Each file runs in its own **transaction**, together with its `schema_migrations` row.
+  If any statement fails, nothing from that file is applied, the files after it don't
+  run, and the error names the file (and the line, when PostgreSQL reports one).
+- Only one runner works on a database at a time (a PostgreSQL advisory lock), so
+  `npm run setup` and `npm run dev` can overlap safely.
+- The runner never drops or resets anything on its own. Only the SQL in a migration
+  changes the database.
+- **Databases built by the old `schema.sql`** (before migrations) already match
+  `001_initial_schema.sql`, so the runner records 001 as applied without running it
+  and keeps your data. A database from an even older `schema.sql` (one missing some of
+  the 7 tables) can't be upgraded; the runner says to run `npm run db:reset`.
+
+### Writing a migration
+
+1. `npm run db:new-migration -- add_exercise_archive` creates
+   `database/migrations/002_add_exercise_archive.sql` with a header comment.
+2. Write the SQL below the header, e.g.
+   `ALTER TABLE exercises ADD COLUMN is_archived BOOLEAN NOT NULL DEFAULT false;`.
+   Don't add `BEGIN`/`COMMIT`; the runner wraps the file in a transaction.
+3. `npm run db:migrate` to apply it, then commit the file with the code that uses it.
+   CI applies every migration to an empty database on each pull request.
+4. Update the table docs on this page.
+
+Rules:
+
+- **Never edit or delete a migration once it is merged.** Other databases have already
+  run it, and the runner stops with "changed after it was applied" if a file's contents
+  differ from what it ran. To change something, add a new migration.
+- **Your own unmerged migration** can still be edited: after changing it, run
+  `npm run db:reset` to rebuild your database with the new version (deletes local data).
+- **Keep data.** Prefer additive changes: new tables, new columns with a default or
+  `NULL`, new indexes. To rename or remove something people's data depends on, copy the
+  data over first (e.g. add the new column, `UPDATE` it from the old one, then drop the
+  old column) in the same migration.
+- **Two branches picked the same number?** The runner refuses to run (`share the number
+  003`). Renumber the one that isn't merged yet.
+- **Switched branches?** If your database has a migration from another branch, the runner
+  prints a note and carries on.
 
 ## Starting, stopping, and resetting
 
@@ -222,23 +279,14 @@ change (see below).
 | --- | --- |
 | Start the database | `npm run db:up` |
 | Stop it (data is kept) | `npm run db:down` |
+| Apply new migrations (data is kept) | `npm run db:migrate` |
 | Reset it (**deletes all local data**) | `npm run db:reset` |
 
-Reset the database after changing `schema.sql` or `DB_PASSWORD`. The password is also
-only applied when the database is first created.
-
-`schema.sql` begins by dropping every Atlas table and type (including the old
-`food_logs`). That is harmless on a fresh database, but running the file by hand against
-a database that has data **deletes that data**.
-
-`npm run db:reset` runs `docker compose down -v` (deletes the `pgdata` volume) and then
-starts the database again, which reloads `schema.sql`.
-
-**If your local database was created from an older `schema.sql`,** it is missing tables
-or the demo user. The API checks for its tables when it starts and logs "Local database
-is out of date (missing tables: ...)", and `/health` reports `"db":"outdated"` (see
-[How the API connects](#how-the-api-connects)). Run `npm run db:reset` once to get the
-new tables.
+`npm run db:reset` runs `docker compose down -v` (deletes the `pgdata` volume), starts
+the database again, and applies every migration to the empty database. You only need it
+after changing `DB_PASSWORD` (the password is only applied when the database is first
+created), after editing your own unmerged migration, or for a database the runner can't
+upgrade.
 
 To check that the tables exist:
 
@@ -246,10 +294,9 @@ To check that the tables exist:
 docker exec -it atlas_db psql -U postgres -d atlas -c "\dt"
 ```
 
-You should see `chat_messages`, `exercises`, `meal_items`, `meals`, `usda_foods`, `users`,
-and `workout_logs`. If you
-changed `DB_USER` or `DB_NAME` in `.env`, use those values instead of `postgres` and
-`atlas`.
+You should see `chat_messages`, `exercises`, `meal_items`, `meals`, `schema_migrations`,
+`usda_foods`, `users`, and `workout_logs`. If you changed `DB_USER` or `DB_NAME` in
+`.env`, use those values instead of `postgres` and `atlas`.
 
 ## How the API connects
 
@@ -266,14 +313,16 @@ The API reads the same `.env` file and connects with the `DB_HOST`, `DB_PORT`,
 | `api/src/agent/usda.ts` | `usda_foods` (USDA cache) |
 | `api/src/agent/runTool.ts` | `exercises` (`find_exercise`), saved meals and workouts (summary and progress tools) |
 
-`GET /health` checks that PostgreSQL is reachable and has every table the API uses
-(`REQUIRED_TABLES` in `api/src/db.ts`; add new tables there when you add them to
-`schema.sql`):
+`GET /health` checks that PostgreSQL is reachable and has every migration applied:
 
 - Database reachable and up to date: `{"ok":true,"db":"up"}`
 - Database unreachable: HTTP 503 with `{"ok":false,"db":"down"}`
-- Database missing tables: HTTP 503 with `{"ok":false,"db":"outdated","missing":[...],"fix":"..."}`.
-  Run `npm run db:reset`.
+- Migrations not applied yet: HTTP 503 with
+  `{"ok":false,"db":"outdated","pending":["002_....sql"],"fix":"..."}`. Run
+  `npm run db:migrate`. The API also logs "Database is missing migrations: ..." when it
+  starts.
+- A problem with the migration files themselves (a misnamed file, a reused number):
+  HTTP 500 with `{"ok":false,"db":"error","error":"..."}`.
 
 With `npm run dev` running, open http://localhost:3000/health to check.
 
@@ -300,6 +349,5 @@ These are known gaps, not mistakes. The full list, with what to add for each, is
   workout draft's rows share a `chat_message_id`, which is enough for "Last: …" for now.)
 - **Micronutrients.** The sprint goal mentions them, but the schema only has calories,
   protein, carbs, and fat.
-- **Migrations.** There is a single `schema.sql` that builds everything on first start.
-  When it changes, mention it in the pull request so teammates know to reset their local
-  database. Once there is real data to keep, switch to numbered migration files.
+- **Down migrations.** Migrations only go forward. To undo one, write a new migration
+  that reverses it.
