@@ -31,7 +31,9 @@ from `.env.example` for you.
 
 Seven tables, designed from the app mockup (Today chat, Today's macros, Saved exercises)
 and kept simple on purpose. Limits to handle later are in
-[`database-known-issues.md`](database-known-issues.md).
+[`database-known-issues.md`](database-known-issues.md). An eighth table,
+`schema_migrations`, only records which migrations have run (see
+[Migrations](#migrations)).
 
 ```mermaid
 erDiagram

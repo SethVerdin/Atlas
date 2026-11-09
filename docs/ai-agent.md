@@ -101,8 +101,8 @@ returned it in the same turn.
   `@google/genai` is optional if the team prefers the SDK later.
 - **CI:** the agent files are part of the API, so CI lints, type-checks, and builds them
   on every pull request (see the README's Continuous integration section).
-- **Endpoints** (used by the app's home screen, `app/src/app/index.tsx`, through
-  `app/src/lib/api.ts`):
+- **Endpoints** (the app's home screen, `app/src/app/index.tsx`, calls all but
+  `/v1/progress` through `app/src/lib/api.ts`):
   - `GET /v1/messages`: the stored feed (last 100), each model message with its draft.
   - `POST /v1/chat` `{ message, timeZone }` → `{ messages: [user, model] }`. History
     is loaded from `chat_messages`, so the app no longer sends it. Errors return
@@ -138,9 +138,10 @@ returned it in the same turn.
     returned an error". The API log line carries Google's full response in `detail`.
   - **Model choice.** In testing, `gemini-3.1-flash-lite` answered each call in about
     1–8 s, while `gemini-flash-latest` sometimes hung past 90 s under load.
-- **Not built yet:** sign-in (every request acts as the seeded demo user), and in-app
+- **Not built yet:** sign-in (every request acts as the seeded demo user), in-app
   speech-to-text on iOS/Android (Expo Go has no speech module; the composer takes typed
-  text, and the keyboard's dictation works. On web it listens via the Web Speech API).
+  text, and the keyboard's dictation works. On web it listens via the Web Speech API),
+  and a progress screen in the app (its data endpoint, `GET /v1/progress`, exists).
 - **Database fit:** drafts are item-based, matching the `meals` + `meal_items` tables
   (each food keeps its grams, source, and per-100 g values). A `usda` item needs an
   `fdc_id` and an `estimated` item needs an `estimate_basis`. A workout draft with
@@ -154,3 +155,9 @@ returned it in the same turn.
   Markdown. If Gemini still slips, render Markdown in the app instead.
 - An AI test set, per the evaluation's Testing Strategy: foods that should use USDA,
   foods that should be estimated, and foods that should trigger a follow-up.
+- Estimates drift when a draft is corrected. The pending draft in the session context
+  (`compactDraft` in `context.ts`) has each item's name, grams, and source, but not its
+  per-100 g values, so the model re-estimates `estimated` items on every correction. In
+  testing, an espresso martini went from 146 to 204 kcal per 100 g when another drink
+  was added to the draft. Fix: include `estimatePer100g` (and `estimateBasis`) for
+  estimated items in the compact draft, and tell the model to reuse them.
