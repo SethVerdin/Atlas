@@ -1,11 +1,9 @@
-// There is no sign-in yet: every request acts as the demo user seeded by
-// database/migrations/001_initial_schema.sql. When auth lands, replace
-// currentUserId with the user ID from the bearer token (it will take the request).
-// Routes and tools already scope every query by it.
+// The signed-in user. api/src/auth.ts checks the bearer token on every request and
+// stores the user ID for the request; currentUserId() reads it back. Routes and
+// agent tools scope every query by it, so users only ever see their own data.
 
+import { authContext } from "./auth";
 import { db } from "./db";
-
-const DEMO_EMAIL = "demo@atlas.local";
 
 export interface Goals {
   kcal: number | null;
@@ -21,10 +19,11 @@ export interface UserSettings {
   goals: Goals;
 }
 
+/** The signed-in user's ID. Only call it while handling a request that needed a token. */
 export async function currentUserId(): Promise<number> {
-  const { rows } = await db.query<{ user_id: number }>("select user_id from users where email = $1", [DEMO_EMAIL]);
-  if (!rows.length) throw new Error(`Demo user ${DEMO_EMAIL} is missing. Run \`npm run db:migrate\`.`);
-  return rows[0].user_id;
+  const auth = authContext.getStore();
+  if (!auth) throw new Error("currentUserId() was called outside a signed-in request.");
+  return auth.userId;
 }
 
 export async function loadUser(userId: number): Promise<UserSettings> {

@@ -21,7 +21,42 @@ function resolveApiUrl(): string {
 
 export const API_URL = resolveApiUrl();
 
-// ---- Types returned by the API (see api/src/chat.ts, drafts.ts, summary.ts) ----
+// ---- Sign-in token ----
+// Set by AuthProvider (lib/auth.tsx). Every request sends it as a bearer token.
+
+let authToken: string | null = null;
+let onUnauthorized: (() => void) | null = null;
+
+export function setAuthToken(token: string | null) {
+  authToken = token;
+}
+
+/** Called when the API rejects the token (expired or signed out elsewhere). */
+export function setUnauthorizedHandler(handler: (() => void) | null) {
+  onUnauthorized = handler;
+}
+
+// ---- Types returned by the API (see api/src/chat.ts, drafts.ts, summary.ts, account.ts) ----
+
+export type Goals = { kcal: number | null; protein_g: number | null; carbs_g: number | null; fat_g: number | null };
+
+export type Account = {
+  userId: number;
+  email: string;
+  displayName: string | null;
+  units: 'lb' | 'kg';
+  timeZone: string;
+  goals: Goals;
+  createdAt: string;
+};
+
+/** Fields to change on the account; leave a key out to keep its value, null clears it. */
+export type AccountUpdate = {
+  displayName?: string | null;
+  units?: 'lb' | 'kg';
+  timeZone?: string;
+  goals?: Partial<Goals>;
+};
 
 export type Macros = { kcal: number; protein_g: number; carbs_g: number; fat_g: number };
 
@@ -65,7 +100,7 @@ export type ChatMessage = {
 };
 
 export type Today = {
-  goals: { kcal: number | null; protein_g: number | null; carbs_g: number | null; fat_g: number | null };
+  goals: Goals;
   totals: Macros;
   meals: { id: number; name: string; time: string; itemCount: number; kcal: number }[];
   nextMeal: string | null;
@@ -96,18 +131,23 @@ const timeZone = () => {
 };
 
 async function request<T>(path: string, body?: unknown): Promise<T> {
+  const headers: Record<string, string> = {};
+  if (body !== undefined) headers['Content-Type'] = 'application/json';
+  if (authToken) headers.Authorization = `Bearer ${authToken}`;
+
   let res: Response;
   try {
     res = await fetch(`${API_URL}${path}`, {
       method: body === undefined ? 'GET' : 'POST',
-      headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
+      headers,
       body: body === undefined ? undefined : JSON.stringify(body),
     });
   } catch {
     throw new Error(`Can't reach the Atlas API at ${API_URL}. Is it running (npm run dev)?`);
   }
 
-  const data = (await res.json().catch(() => ({}))) as T & { error?: string };
+  const data = (await res.json().catch(() => ({}))) as T & { error?: string; code?: string };
+  if (res.status === 401 && data.code === 'unauthorized') onUnauthorized?.();
   if (!res.ok) throw new Error(data.error ?? `Something went wrong (HTTP ${res.status}).`);
   return data;
 }
@@ -138,4 +178,38 @@ export async function getToday(): Promise<Today> {
 
 export async function getExercises(): Promise<SavedExercise[]> {
   return (await request<{ exercises: SavedExercise[] }>(`/v1/exercises${tzQuery()}`)).exercises;
+}
+
+// ---- Account ----
+
+type AuthResult = { token: string; user: Account };
+
+export async function register(email: string, password: string, displayName?: string): Promise<AuthResult> {
+  return request<AuthResult>('/v1/auth/register', { email, password, displayName: displayName || undefined });
+}
+
+export async function login(email: string, password: string): Promise<AuthResult> {
+  return request<AuthResult>('/v1/auth/login', { email, password });
+}
+
+/** Ends this device's session on the server. */
+export async function logout(): Promise<void> {
+  await request('/v1/auth/logout', {});
+}
+
+export async function getMe(): Promise<Account> {
+  return (await request<{ user: Account }>('/v1/me')).user;
+}
+
+export async function updateMe(update: AccountUpdate): Promise<Account> {
+  return (await request<{ user: Account }>('/v1/me', update)).user;
+}
+
+export async function changePassword(currentPassword: string, newPassword: string): Promise<void> {
+  await request('/v1/me/password', { currentPassword, newPassword });
+}
+
+/** Permanently deletes the account and all of its meals, workouts, and chat. */
+export async function deleteAccount(password: string): Promise<void> {
+  await request('/v1/me/delete', { password });
 }

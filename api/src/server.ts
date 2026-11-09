@@ -1,4 +1,6 @@
 import Fastify from "fastify";
+import { registerAccountRoutes } from "./account";
+import { registerAuth } from "./auth";
 import { registerChatRoutes } from "./chat";
 import { config } from "./config";
 import { db } from "./db";
@@ -16,6 +18,10 @@ app.addHook("onRequest", async (req, reply) => {
   if (req.method === "OPTIONS") return reply.code(204).send();
 });
 
+// Sign-in first: its hook must run before every route below. It is registered
+// directly (not with app.register) so the hook applies to the whole app.
+registerAuth(app);
+app.register(registerAccountRoutes);
 app.register(registerChatRoutes);
 app.register(registerSummaryRoutes);
 

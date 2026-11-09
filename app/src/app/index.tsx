@@ -1,3 +1,5 @@
+import Feather from '@expo/vector-icons/Feather';
+import { router } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
@@ -111,7 +113,17 @@ export default function HomeScreen() {
                 Today
               </Text>
             </View>
-            <Text style={styles.brand}>ATLAS</Text>
+            <View style={styles.headerRight}>
+              <Text style={styles.brand}>ATLAS</Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Account"
+                onPress={() => router.push('/account')}
+                hitSlop={8}
+                style={({ pressed }) => [styles.accountButton, pressed && { opacity: 0.85 }]}>
+                <Feather name="user" size={18} color={C.textBody} />
+              </Pressable>
+            </View>
           </View>
 
           <ChatFeed messages={messages} sending={sending} error={chatError} onSave={save} />
@@ -172,7 +184,18 @@ const styles = StyleSheet.create({
   titleBlock: { gap: 2 },
   date: { fontSize: 13, color: C.textSecondary },
   title: { fontSize: 30, fontWeight: '700', letterSpacing: -0.5, color: C.text },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   brand: { fontSize: 15, fontWeight: '700', letterSpacing: 3, color: C.accent },
+  accountButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: C.nav,
+    borderWidth: 1,
+    borderColor: C.border,
+  },
   scrim: { flex: 1, backgroundColor: C.scrim },
   bottom: { paddingHorizontal: 12, paddingTop: 8, gap: 10, backgroundColor: C.bg },
 });
