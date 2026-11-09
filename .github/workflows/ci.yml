@@ -58,5 +58,11 @@ jobs:
         run: npm run lint
       - name: Type-check
         run: npm run typecheck
+      # Offline, expo-doctor checks packages against the Expo SDK installed from the
+      # lockfile, so the result only changes when the repo does. Online it compares
+      # against Expo's newest patch releases, which failed every PR whenever Expo
+      # shipped a patch. To pick up new patches: `npx expo install --fix` in app/.
       - name: Expo dependency check
         run: npx expo-doctor
+        env:
+          EXPO_OFFLINE: "1"

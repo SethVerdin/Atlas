@@ -260,7 +260,7 @@ Node 24 (from `.nvmrc`):
 | `app` | `npm ci` | Same as above, for the app |
 | | Lint (`expo lint`) | Mistakes plus React rules |
 | | Type-check (`tsc --noEmit`) | TypeScript type errors |
-| | `expo-doctor` | Package versions that don't match the Expo SDK; config problems |
+| | `expo-doctor` (offline) | Package versions that don't match the installed Expo SDK; config problems |
 
 If any step fails, that check turns red on the PR. Click **Details** next to it to see
 the log. When both checks are green, the PR is ready for review.
@@ -302,6 +302,11 @@ GitHub only blocks merging once the checks are marked required:
   the Expo SDK; don't use plain `npm install` there.
 - Commit the updated `package-lock.json` together with `package.json`. Never edit a
   lockfile by hand.
+- **Expo patch updates:** Expo publishes patch releases often. CI runs `expo-doctor`
+  offline, so it checks the app against the Expo SDK in the lockfile and doesn't fail
+  just because a newer patch came out. To pick up new patches, run
+  `npx expo install --fix` inside `app/` and commit both files. `npx expo-doctor` (online)
+  lists what's available.
 - **Lockfile merge conflict:** keep either version, run `npm install` in that folder to
   regenerate it, and commit the result.
 - **CI fails at `npm ci` with "not in sync"**: someone changed `package.json` without
