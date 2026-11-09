@@ -346,8 +346,8 @@ For DBeaver, pgAdmin, or similar:
 These are known gaps, not mistakes. The full list, with what to add for each, is in
 [`database-known-issues.md`](database-known-issues.md).
 
-- **Per-set detail.** `workout_logs` has one row per exercise, so "3 × 8, last set 6"
-  can't be recorded exactly.
+- **Per-set details** such as RPE or rest times. Uneven sets already work: "3 × 8, last
+  set 6" is stored as a 2 × 8 row and a 1 × 6 row (see [`workout_logs`](#workout_logs)).
 - **Goal history and workout sessions.** Left out until a feature needs them. (A
   workout draft's rows share a `chat_message_id`, which is enough for "Last: …" for now.)
 - **Micronutrients.** The sprint goal mentions them, but the schema only has calories,

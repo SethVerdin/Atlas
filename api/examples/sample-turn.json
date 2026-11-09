@@ -3,7 +3,7 @@
 
   "systemInstruction": { "parts": [{ "text": "<SYSTEM_PROMPT from src/agent/systemPrompt.ts>" }] },
   "tools": "<TOOL_DECLARATIONS from src/agent/tools.ts>",
-  "generationConfig": { "temperature": 0.4, "maxOutputTokens": 800 },
+  "generationConfig": { "temperature": 0.4, "maxOutputTokens": 4096 },
 
   "contents": [
     {
