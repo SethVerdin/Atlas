@@ -10,9 +10,9 @@ services:
     ports:
       - "${DB_PORT:-5433}:5432"
     volumes:
+      # Tables come from database/migrations, applied by `npm run db:migrate`
+      # (setup, dev, and db:reset run it for you).
       - pgdata:/var/lib/postgresql/data
-      # Applied automatically the first time the database is created (empty volume).
-      - ./database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 2s

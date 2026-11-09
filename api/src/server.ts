@@ -1,7 +1,8 @@
 import Fastify from "fastify";
 import { registerChatRoutes } from "./chat";
 import { config } from "./config";
-import { db, missingTables } from "./db";
+import { db } from "./db";
+import { MigrationError, pendingMigrations } from "./migrations";
 import { registerSummaryRoutes } from "./summary";
 
 const app = Fastify({ logger: true });
@@ -18,18 +19,19 @@ app.addHook("onRequest", async (req, reply) => {
 app.register(registerChatRoutes);
 app.register(registerSummaryRoutes);
 
-const OUTDATED_HINT = "Run `npm run db:reset` to rebuild it from database/schema.sql (deletes local data).";
+const OUTDATED_HINT = "Run `npm run db:migrate` to apply them (keeps your data).";
 
-// Reports whether the API is up, can reach PostgreSQL, and has every table it needs.
+// Reports whether the API is up, can reach PostgreSQL, and has every migration applied.
 app.get("/health", async (_req, reply) => {
-  let missing: string[];
+  let pending: string[];
   try {
-    missing = await missingTables();
+    pending = await pendingMigrations();
   } catch (err) {
     app.log.error(err);
+    if (err instanceof MigrationError) return reply.code(500).send({ ok: false, db: "error", error: err.message });
     return reply.code(503).send({ ok: false, db: "down" });
   }
-  if (missing.length) return reply.code(503).send({ ok: false, db: "outdated", missing, fix: OUTDATED_HINT });
+  if (pending.length) return reply.code(503).send({ ok: false, db: "outdated", pending, fix: OUTDATED_HINT });
   return { ok: true, db: "up" };
 });
 
@@ -37,12 +39,14 @@ app.addHook("onClose", async () => {
   await db.end();
 });
 
-// An out-of-date local database makes routes fail with HTTP 500, so say why at startup.
+// Unapplied migrations make routes fail with HTTP 500, so say why at startup.
+// (`npm run dev` applies them before starting; `npm run dev:api` doesn't.)
 async function warnIfSchemaOutdated() {
-  const missing = await missingTables().catch(() => []); // database down: /health reports that
-  if (missing.length) {
-    app.log.warn(`Local database is out of date (missing tables: ${missing.join(", ")}). ${OUTDATED_HINT}`);
-  }
+  const pending = await pendingMigrations().catch((err) => {
+    if (err instanceof MigrationError) app.log.error(err.message);
+    return []; // database down: /health reports that
+  });
+  if (pending.length) app.log.warn(`Database is missing migrations: ${pending.join(", ")}. ${OUTDATED_HINT}`);
 }
 
 app.listen({ port: config.port, host: config.host }).then(warnIfSchemaOutdated, (err) => {

@@ -1,7 +1,7 @@
 // There is no sign-in yet: every request acts as the demo user seeded by
-// database/schema.sql. When auth lands, replace currentUserId with the user ID
-// from the bearer token (it will take the request). Routes and tools already
-// scope every query by it.
+// database/migrations/001_initial_schema.sql. When auth lands, replace
+// currentUserId with the user ID from the bearer token (it will take the request).
+// Routes and tools already scope every query by it.
 
 import { db } from "./db";
 
@@ -23,7 +23,7 @@ export interface UserSettings {
 
 export async function currentUserId(): Promise<number> {
   const { rows } = await db.query<{ user_id: number }>("select user_id from users where email = $1", [DEMO_EMAIL]);
-  if (!rows.length) throw new Error(`Demo user ${DEMO_EMAIL} is missing. Reset the database to reload schema.sql.`);
+  if (!rows.length) throw new Error(`Demo user ${DEMO_EMAIL} is missing. Run \`npm run db:migrate\`.`);
   return rows[0].user_id;
 }
 

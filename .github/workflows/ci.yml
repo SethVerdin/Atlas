@@ -22,6 +22,20 @@ jobs:
     defaults:
       run:
         working-directory: api
+    # An empty PostgreSQL (same version as docker-compose.yml) for the Migrations step.
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: ci_only
+          POSTGRES_DB: atlas
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 30
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -36,6 +50,13 @@ jobs:
         run: npm run typecheck
       - name: Build
         run: npm run build
+      # Builds the schema from every migration on an empty database, then runs again
+      # to check that nothing is applied twice.
+      - name: Migrations
+        run: npm run migrate && npm run migrate
+        env:
+          DB_PORT: "5432"
+          DB_PASSWORD: ci_only
       - name: Validate docker-compose.yml
         working-directory: .
         run: cp .env.example .env && docker compose config --quiet
