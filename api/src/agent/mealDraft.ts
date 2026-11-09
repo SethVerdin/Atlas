@@ -6,7 +6,11 @@
 import { z } from "zod";
 import { EstimatePer100g, ToolArgs } from "./tools";
 
-export type Per100g = z.infer<typeof EstimatePer100g>;
+/** Calories and macros per 100 g (or totals), as stored for every meal item. */
+export type Per100g = Omit<Estimate, "alcohol_g">;
+
+/** The model's per-100 g estimate. alcohol_g is set for alcoholic drinks only. */
+export type Estimate = z.infer<typeof EstimatePer100g>;
 
 export interface DraftMealItem {
   name: string;
@@ -30,21 +34,29 @@ export type UsdaLookup = (fdcId: number) => Promise<Per100g | null>;
 // Thrown back to Gemini as a functionResponse error so it can fix the item or ask the user.
 export class DraftValidationError extends Error {}
 
-// Energy from macros (Atwater factors). Estimates far from this are rejected.
-// Tolerance covers fiber and rounding; alcohol-containing items would need an exception.
+// Energy from macros and alcohol (Atwater factors: 4 kcal/g protein and carbs, 9 fat,
+// 7 alcohol). Estimates far from this are rejected. Tolerance covers fiber and rounding.
 const ATWATER_TOLERANCE = 0.2;
 const ATWATER_SLACK_KCAL = 15;
 
-export function checkEstimate(name: string, e: Per100g): string[] {
+export function atwaterKcal(e: Omit<Estimate, "kcal">): number {
+  return 4 * e.protein_g + 4 * e.carbs_g + 9 * e.fat_g + 7 * (e.alcohol_g ?? 0);
+}
+
+export function checkEstimate(name: string, e: Estimate): string[] {
   const issues: string[] = [];
-  const macroGrams = e.protein_g + e.carbs_g + e.fat_g;
-  if (macroGrams > 100) {
-    issues.push(`${name}: protein + carbs + fat is ${macroGrams.toFixed(1)} g per 100 g, which is impossible`);
+  const alcohol = e.alcohol_g ?? 0;
+  const grams = e.protein_g + e.carbs_g + e.fat_g + alcohol;
+  if (grams > 100) {
+    const parts = alcohol ? "protein + carbs + fat + alcohol" : "protein + carbs + fat";
+    issues.push(`${name}: ${parts} is ${grams.toFixed(1)} g per 100 g, which is impossible`);
   }
-  const atwater = 4 * e.protein_g + 4 * e.carbs_g + 9 * e.fat_g;
+  const atwater = atwaterKcal(e);
   if (Math.abs(e.kcal - atwater) > Math.max(ATWATER_SLACK_KCAL, atwater * ATWATER_TOLERANCE)) {
+    // A drink estimated without alcohol_g looks like it has calories from nowhere.
+    const hint = !alcohol && e.kcal > atwater ? "; if it contains alcohol, give alcohol_g (7 kcal/g)" : "";
     issues.push(
-      `${name}: ${e.kcal} kcal does not match its macros (about ${Math.round(atwater)} kcal); re-estimate consistently`,
+      `${name}: ${e.kcal} kcal does not match its macros (about ${Math.round(atwater)} kcal); re-estimate consistently${hint}`,
     );
   }
   return issues;
@@ -95,13 +107,16 @@ export async function buildMealDraft(
         issues.push(...estIssues);
         continue;
       }
+      // Alcohol only feeds the check: its calories are already in kcal, and meal items
+      // store kcal, protein, carbs, and fat.
+      const per100g = { kcal: est.kcal, protein_g: est.protein_g, carbs_g: est.carbs_g, fat_g: est.fat_g };
       items.push({
         name: item.name,
         grams: item.grams,
         source: "estimated",
         estimateBasis: item.estimateBasis,
-        per100g: est,
-        totals: scale(est, item.grams),
+        per100g,
+        totals: scale(per100g, item.grams),
       });
     }
   }
