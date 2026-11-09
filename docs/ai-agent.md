@@ -78,8 +78,17 @@ asks one follow-up question instead.
 
 Code still checks every estimate (`checkEstimate` in `mealDraft.ts`):
 
-- protein + carbs + fat must not exceed 100 g per 100 g
-- kcal must be within 20% (or 15 kcal) of 4P + 4C + 9F
+- protein + carbs + fat + alcohol must not exceed 100 g per 100 g
+- kcal must be within 20% (or 15 kcal) of 4P + 4C + 9F + 7A
+
+**Alcoholic drinks.** Alcohol has 7 kcal/g and carries most of a drink's calories (beer:
+about 43 kcal per 100 g from under 1 g of fat and protein and 4 g of carbs). So for
+drinks the model also sends `alcohol_g` in `estimatePer100g`, and the check counts it.
+`alcohol_g` is optional and only feeds the check: its calories are already in `kcal`,
+and meal items store kcal, protein, carbs, and fat, so it is not saved. A drink
+estimated without `alcohol_g` fails the check, and the error tells the model to add it.
+USDA drinks don't need this: their calories come straight from USDA (`usda.ts` also
+counts alcohol, nutrient 221, when a food has no calorie value).
 
 A failed check goes back to Gemini as a tool error. The **API**, not the model, sets the
 final `usda` / `estimated` label: an `fdcId` counts as USDA only if `search_foods`
@@ -131,6 +140,5 @@ returned it in the same turn.
 
 - Markdown in replies: the prompt now asks for plain text, since the feed doesn't render
   Markdown. If Gemini still slips, render Markdown in the app instead.
-- Alcohol: the Atwater check rejects drinks (7 kcal/g alcohol). Add `alcohol_g` or exempt beverages.
 - An AI test set, per the evaluation's Testing Strategy: foods that should use USDA,
   foods that should be estimated, and foods that should trigger a follow-up.

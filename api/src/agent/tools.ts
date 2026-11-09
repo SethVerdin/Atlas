@@ -15,6 +15,10 @@ const estimatePer100gSchema = {
     protein_g: { type: "NUMBER" },
     carbs_g: { type: "NUMBER" },
     fat_g: { type: "NUMBER" },
+    alcohol_g: {
+      type: "NUMBER",
+      description: "Grams of alcohol (ethanol) per 100 g, for alcoholic drinks. Omit for everything else.",
+    },
   },
   required: ["kcal", "protein_g", "carbs_g", "fat_g"],
 };
@@ -137,6 +141,8 @@ export const EstimatePer100g = z.object({
   protein_g: z.number().min(0).max(100),
   carbs_g: z.number().min(0).max(100),
   fat_g: z.number().min(0).max(100),
+  // Alcoholic drinks only. Used by the calorie check (7 kcal/g); not stored.
+  alcohol_g: z.number().min(0).max(100).optional(),
 });
 
 export const MealItemArgs = z

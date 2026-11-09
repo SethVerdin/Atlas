@@ -3,7 +3,7 @@
 
 import { config } from "../config";
 import { db } from "../db";
-import type { Per100g } from "./mealDraft";
+import { atwaterKcal, type Per100g } from "./mealDraft";
 
 export interface FoodCandidate {
   fdcId: number;
@@ -38,7 +38,12 @@ function toPer100g(food: UsdaFood): Per100g | null {
   const carbs = byNumber("205");
   if (protein === undefined || fat === undefined || carbs === undefined) return null;
   // 208 = Energy; Foundation foods often only have 958/957 (Atwater specific/general).
-  const kcal = byNumber("208", "KCAL") ?? byNumber("958", "KCAL") ?? byNumber("957", "KCAL") ?? 4 * protein + 4 * carbs + 9 * fat;
+  // Last resort: compute it, counting alcohol (221) at 7 kcal/g like mealDraft.ts does.
+  const kcal =
+    byNumber("208", "KCAL") ??
+    byNumber("958", "KCAL") ??
+    byNumber("957", "KCAL") ??
+    atwaterKcal({ protein_g: protein, carbs_g: carbs, fat_g: fat, alcohol_g: byNumber("221") });
   return { kcal: Math.round(kcal), protein_g: round1(protein), carbs_g: round1(carbs), fat_g: round1(fat) };
 }
 

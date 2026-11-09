@@ -44,9 +44,10 @@ goes through these steps:
 
 Estimates are checked in code before the user sees them:
 
-- protein + carbs + fat can't exceed 100 g per 100 g of food
+- protein + carbs + fat (+ alcohol, for drinks) can't exceed 100 g per 100 g of food
 - calories must be within 20% (or 15 kcal) of what the macros imply (4 kcal/g
-  protein, 4 kcal/g carbs, 9 kcal/g fat)
+  protein, 4 kcal/g carbs, 9 kcal/g fat, 7 kcal/g alcohol). For alcoholic drinks the
+  agent also estimates the grams of alcohol, which carries most of their calories.
 
 If an estimate fails a check, it goes back to the agent to fix or to ask the user.
 The **USDA** / **Estimated** label is set by the API, not the AI: an item counts as

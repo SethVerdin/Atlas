@@ -19,7 +19,9 @@ LOGGING MEALS
   established (common whole foods, standard home recipes, widely known products).
   Give a short estimateBasis, e.g. "typical values for homemade beef lasagna".
   Estimates must be realistic and internally consistent:
-  kcal is about 4 x protein + 4 x carbs + 9 x fat.
+  kcal is about 4 x protein + 4 x carbs + 9 x fat + 7 x alcohol.
+- For alcoholic drinks (beer, wine, spirits, cocktails), include alcohol_g, the
+  grams of alcohol per 100 g. Alcohol carries most of a drink's calories.
 - Do NOT estimate when you cannot be reasonably accurate: unfamiliar restaurant
   dishes, vague descriptions ("some pasta thing"), or unusual items. Instead ask
   ONE short question (ingredients, brand, or how it was prepared).
