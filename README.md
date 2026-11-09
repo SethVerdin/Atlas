@@ -171,9 +171,10 @@ screen shows "AI is not set up." The app finds the API on its own: on a phone it
 your computer's address on port 3000. To point it somewhere else, set
 `EXPO_PUBLIC_API_URL` in `app/.env`.
 
-**Database created before the home screen was wired up?** Reset it once so it has the
-new tables and the demo user: `docker compose down -v`, then `npm run db:up` (this
-deletes local data). Otherwise the feed shows an error like "Demo user ... is missing".
+**Database created from an older `schema.sql`?** The API warns "Local database is out of
+date" when it starts, `/health` answers `{"ok":false,"db":"outdated",...}`, and the app
+shows errors such as "Something went wrong (HTTP 500)". Run `npm run db:reset` once to
+rebuild it with the current tables and the demo user (this deletes local data).
 
 Press `Ctrl+C` to stop both.
 
@@ -183,6 +184,7 @@ Press `Ctrl+C` to stop both.
 | `npm run dev` | Start the API and the app |
 | `npm run dev:api` / `npm run dev:app` | Start only one of them |
 | `npm run db:up` / `npm run db:down` | Start or stop the database |
+| `npm run db:reset` | Delete the local database and rebuild it from `schema.sql` |
 | `npm run lint` | Lint the API and the app (same as CI) |
 | `npm run typecheck` | Type-check the API and the app (same as CI) |
 
@@ -230,9 +232,9 @@ database is created.
 - **Check the tables:** `docker exec -it atlas_db psql -U postgres -d atlas -c "\dt"`
   should list `chat_messages`, `exercises`, `meal_items`, `meals`, `usda_foods`, `users`,
   and `workout_logs`. See [`docs/database.md`](docs/database.md) for what each holds.
-- **Reset the database** (deletes all local data, then reloads `schema.sql` on the next
-  start): `docker compose down -v`, then `npm run db:up`. Do this after changing
-  `schema.sql` or `DB_PASSWORD`.
+- **Reset the database** (deletes all local data and reloads `schema.sql`):
+  `npm run db:reset`. Do this after `schema.sql` or `DB_PASSWORD` changes, including
+  when you pull someone else's schema change.
 - **Database tools** (DBeaver, pgAdmin): host `localhost`, port `5433`, database `atlas`,
   user `postgres`, and the password from your `.env`.
 
