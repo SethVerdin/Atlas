@@ -101,8 +101,8 @@ returned it in the same turn.
   `@google/genai` is optional if the team prefers the SDK later.
 - **CI:** the agent files are part of the API, so CI lints, type-checks, and builds them
   on every pull request (see the README's Continuous integration section).
-- **Endpoints** (used by the app's home screen, `app/src/app/index.tsx`, through
-  `app/src/lib/api.ts`):
+- **Endpoints** (the app's home screen, `app/src/app/index.tsx`, calls all but
+  `/v1/progress` through `app/src/lib/api.ts`):
   - `GET /v1/messages`: the stored feed (last 100), each model message with its draft.
   - `POST /v1/chat` `{ message, timeZone }` → `{ messages: [user, model] }`. History
     is loaded from `chat_messages`, so the app no longer sends it. Errors return
@@ -111,6 +111,18 @@ returned it in the same turn.
     sets, reps, weight }] }` → `{ draft }` (404 if a newer draft replaced it).
   - `GET /v1/today` and `GET /v1/exercises` (`api/src/summary.ts`) feed the Macros and
     Exercises buttons. Both take `?timeZone=`.
+  - `GET /v1/progress?days=7|30&timeZone=` (`api/src/progress.ts`): data for progress
+    charts, not used by the app yet. Covers the last 7 or 30 calendar days in the user's
+    time zone, today included (any other `days` → 400). Returns `{ days, from, to,
+    timeZone, goals, nutrition, unit, exercises }`:
+    - `nutrition`: one entry per day, oldest first, even days with nothing saved:
+      `{ date, meals, kcal, protein_g, carbs_g, fat_g }`. `meals: 0` means nothing was
+      logged that day. Compare with `goals` (the user's current goals).
+    - `exercises`: each exercise trained in the window, most recently trained first:
+      `{ exerciseId, name, category, sessions: [{ date, topWeight, reps }] }`, one
+      session per day trained. `topWeight` is that day's heaviest weight in `unit` (the
+      user's lb/kg; rows logged in the other unit are converted), and `reps` is the most
+      reps at that weight. `topWeight: null` means only bodyweight sets that day.
   - **Tools are sent.** The temporary `NO_TOOLS_NOTE` from the first version is gone.
   - **Output cap.** `maxOutputTokens` (in `context.ts`) is 4096 because it counts
     Gemini's internal thinking tokens as well as the reply. At 800, thinking (often
@@ -126,9 +138,10 @@ returned it in the same turn.
     returned an error". The API log line carries Google's full response in `detail`.
   - **Model choice.** In testing, `gemini-3.1-flash-lite` answered each call in about
     1–8 s, while `gemini-flash-latest` sometimes hung past 90 s under load.
-- **Not built yet:** sign-in (every request acts as the seeded demo user), and in-app
+- **Not built yet:** sign-in (every request acts as the seeded demo user), in-app
   speech-to-text on iOS/Android (Expo Go has no speech module; the composer takes typed
-  text, and the keyboard's dictation works. On web it listens via the Web Speech API).
+  text, and the keyboard's dictation works. On web it listens via the Web Speech API),
+  and a progress screen in the app (its data endpoint, `GET /v1/progress`, exists).
 - **Database fit:** drafts are item-based, matching the `meals` + `meal_items` tables
   (each food keeps its grams, source, and per-100 g values). A `usda` item needs an
   `fdc_id` and an `estimated` item needs an `estimate_basis`. A workout draft with
@@ -142,3 +155,9 @@ returned it in the same turn.
   Markdown. If Gemini still slips, render Markdown in the app instead.
 - An AI test set, per the evaluation's Testing Strategy: foods that should use USDA,
   foods that should be estimated, and foods that should trigger a follow-up.
+- Estimates drift when a draft is corrected. The pending draft in the session context
+  (`compactDraft` in `context.ts`) has each item's name, grams, and source, but not its
+  per-100 g values, so the model re-estimates `estimated` items on every correction. In
+  testing, an espresso martini went from 146 to 204 kcal per 100 g when another drink
+  was added to the draft. Fix: include `estimatePer100g` (and `estimateBasis`) for
+  estimated items in the compact draft, and tell the model to reuse them.

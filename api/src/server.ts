@@ -3,6 +3,7 @@ import { registerChatRoutes } from "./chat";
 import { config } from "./config";
 import { db } from "./db";
 import { MigrationError, pendingMigrations } from "./migrations";
+import { registerProgressRoutes } from "./progress";
 import { registerSummaryRoutes } from "./summary";
 
 const app = Fastify({ logger: true });
@@ -18,6 +19,7 @@ app.addHook("onRequest", async (req, reply) => {
 
 app.register(registerChatRoutes);
 app.register(registerSummaryRoutes);
+app.register(registerProgressRoutes);
 
 const OUTDATED_HINT = "Run `npm run db:migrate` to apply them (keeps your data).";
 

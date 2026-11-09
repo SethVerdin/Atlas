@@ -12,8 +12,8 @@ are **not** handled by the schema and need care in code or a later change.
    `saved`. Any query for totals, history, "Last: 3 × 8", or the muscle diagram must use
    only `saved` rows, or unsaved drafts will inflate the numbers.
    *Status:* handled. Every total, history, and agent-tool query in the API filters on
-   `status = 'saved'` (`api/src/summary.ts`, `api/src/agent/runTool.ts`). New queries
-   must do the same.
+   `status = 'saved'` (`api/src/summary.ts`, `api/src/progress.ts`,
+   `api/src/agent/runTool.ts`). New queries must do the same.
    *Later fix:* database views such as `saved_meals` that everyone queries instead.
 
 2. **Users seeing each other's data.** Every query must filter by the user ID taken from
@@ -51,6 +51,9 @@ are **not** handled by the schema and need care in code or a later change.
 
 6. **Mixed lb and kg.** `workout_logs` stores weight in the unit the user entered. If a
    user switches units, progress charts must convert to one unit before comparing.
+   *Status:* partly handled. `GET /v1/progress` converts every weight to the user's
+   unit before picking the top weight. The agent's `get_progress` tool and the
+   Exercises list ("Last: …") still use each row's own unit.
    *Later fix:* store everything in kg and convert only for display.
 
 7. **One row per exercise, not per set.** `sets`, `reps`, `weight` describe all sets the

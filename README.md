@@ -71,6 +71,7 @@ Atlas/
 │   │   ├── chat.ts             Chat feed: GET /v1/messages, POST /v1/chat, POST /v1/drafts/:id/save
 │   │   ├── drafts.ts           Stores drafts as status 'draft' rows; Save applies edits and marks them saved
 │   │   ├── summary.ts          GET /v1/today (Macros button), GET /v1/exercises (Exercises button)
+│   │   ├── progress.ts         GET /v1/progress: daily totals vs. goals, top weight per exercise
 │   │   ├── user.ts             Current user (the seeded demo user until sign-in exists)
 │   │   ├── db.ts, time.ts      Shared PostgreSQL pool; time-zone helpers
 │   │   ├── config.ts           Reads settings from the root .env
@@ -98,7 +99,7 @@ Atlas/
 │   │   │   └── index.tsx         Home screen: chat feed, "Chat with Atlas" composer, Macros / Exercises
 │   │   ├── components/atlas/   Home screen parts: chat feed + draft cards, composer, sheets
 │   │   ├── components/         Other reusable UI (themed text/views, etc.)
-│   │   ├── lib/api.ts          Finds the API's address; typed calls for every endpoint
+│   │   ├── lib/api.ts          Finds the API's address; typed calls for the endpoints the app uses
 │   │   ├── constants/theme.ts  Colors (AtlasColors) and fonts
 │   │   ├── hooks/              Color scheme, theme, and speech-to-text (web only for now)
 │   │   ├── global.css          Font settings for the web version
@@ -118,14 +119,14 @@ Atlas/
 │                                   and a demo user
 ├── docs/
 │   ├── ai-agent.md             How the AI agent, its endpoints, and its context work
-│   ├── database.md             Every table and column, and how the schema is loaded
+│   ├── database.md             Every table and column, and how migrations work
 │   └── database-known-issues.md  Limits of the schema to handle later
 ├── scripts/
 │   ├── setup.mjs               Runs on `npm run setup`
 │   └── dev.mjs                 Runs on `npm run dev`
 ├── .github/workflows/ci.yml    CI checks on every pull request
 ├── docker-compose.yml          Local PostgreSQL
-├── package.json                Root commands (setup, dev, lint, typecheck)
+├── package.json                Root commands (setup, dev, db:*, lint, typecheck)
 ├── .env.example                All configuration variables (copied to .env by setup)
 ├── .gitignore                  Files Git ignores (.env, node_modules, ...)
 ├── .gitattributes              Line endings; marks lockfiles as generated
@@ -282,6 +283,7 @@ If any step fails, that check turns red on the PR. Click **Details** next to it 
 the log. When both checks are green, the PR is ready for review.
 
 **Run the same checks locally before pushing:** `npm run lint` and `npm run typecheck`.
+If you added a migration, `npm run db:migrate` applies it to your local database.
 
 **What CI doesn't do yet**
 
@@ -329,6 +331,12 @@ GitHub only blocks merging once the checks are marked required:
 - **CI fails at `npm ci` with "not in sync"**: someone changed `package.json` without
   committing the lockfile. Run `npm install` in that folder and commit the lockfile.
 
+**Changing the database schema:** never edit an existing migration. Run
+`npm run db:new-migration -- <name>`, write the SQL in the new file, run
+`npm run db:migrate`, and commit the file with the code that uses it. Update the table
+docs in [`docs/database.md`](docs/database.md) too. Rules and examples:
+[Migrations](docs/database.md#migrations).
+
 **Adding a configuration variable:** add it to `.env.example` with an empty or
 placeholder value and a comment, and to the table in [Configuration](#configuration-env).
 Never put real secrets in `.env.example`.
@@ -339,6 +347,13 @@ Never put real secrets in `.env.example`.
   open Docker Desktop and wait for "Engine running".
 - **"Set DB_PASSWORD in .env"**: your `.env` is missing or has no `DB_PASSWORD`. Run
   `npm run setup` or copy `.env.example` to `.env`.
+- **"Migration error: …"** (from `npm run dev`, `setup`, or `db:migrate`): the message
+  says what to do. "changed after it was applied": a migration file was edited; undo the
+  edit and add a new migration. "share the number": two migrations got the same number;
+  renumber the unmerged one. "can't be upgraded": the database predates migrations; run
+  `npm run db:reset` (deletes local data). See [Migrations](docs/database.md#migrations).
+- **"Can't reach the database"** or `/health` says `"db":"down"`: start it with
+  `npm run db:up`.
 - **Port 5433, 3000, or 8081 already in use**: another program is using it. Stop it, or
   change `DB_PORT` / `API_PORT` in `.env`.
 - **PowerShell: "npm.ps1 cannot be loaded because running scripts is disabled"**:
