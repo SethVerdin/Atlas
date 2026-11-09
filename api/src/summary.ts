@@ -39,7 +39,7 @@ export function describeSession(rows: LogRow[]): string {
 
 export async function registerSummaryRoutes(app: FastifyInstance) {
   app.get("/v1/today", async (req) => {
-    const userId = await currentUserId();
+    const userId = currentUserId(req);
     const user = await loadUser(userId);
     const timeZone = timeZoneFor(req, user);
 
@@ -86,7 +86,7 @@ export async function registerSummaryRoutes(app: FastifyInstance) {
   });
 
   app.get("/v1/exercises", async (req) => {
-    const userId = await currentUserId();
+    const userId = currentUserId(req);
     const user = await loadUser(userId);
     const timeZone = timeZoneFor(req, user);
 

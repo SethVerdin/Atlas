@@ -1,7 +1,7 @@
 import Feather from '@expo/vector-icons/Feather';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 
-export type AtlasIconName = 'macros' | 'exercises' | 'mic' | 'send' | 'close' | 'check' | 'chevron';
+export type AtlasIconName = 'macros' | 'exercises' | 'mic' | 'send' | 'close' | 'check' | 'chevron' | 'signOut' | 'profile';
 
 const featherNames = {
   macros: 'pie-chart',
@@ -10,6 +10,8 @@ const featherNames = {
   close: 'x',
   check: 'check',
   chevron: 'chevron-right',
+  signOut: 'log-out',
+  profile: 'user',
 } as const;
 
 type Props = { name: AtlasIconName; size?: number; color: string };

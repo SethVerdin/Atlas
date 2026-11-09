@@ -26,8 +26,7 @@ Gemini is stateless, so every call sends:
 1. **`systemInstruction`**, the same every time (`SYSTEM_PROMPT`).
 2. **`tools`**: `search_foods`, `find_exercise`, `draft_meal`, `draft_workout`,
    `get_nutrition_summary`, `get_progress`. None takes a `userId`: the API scopes
-   every call to the current user (OWASP API1). That is the seeded demo user until
-   sign-in exists, then the user in the auth token. None writes data.
+   every call to the signed-in user from the session token (OWASP API1). None writes data.
 3. **`contents`**: the last 14 stored messages (user text + model replies only),
    then the new message prefixed with fresh session context:
    ```
@@ -54,7 +53,7 @@ Gemini is stateless, so every call sends:
 
 ## Agent loop (POST /v1/chat)
 
-1. Load the user (the demo user until sign-in exists; `api/src/user.ts`), their last 14
+1. Load the signed-in user (`api/src/user.ts`), their last 14
    messages from `chat_messages`, and their latest unsaved draft.
 2. `buildChatRequest(history, message, session)` and call Gemini.
 3. For each `functionCall`: validate with `ToolArgs[name]`, run it for the current user,
@@ -138,7 +137,7 @@ returned it in the same turn.
     returned an error". The API log line carries Google's full response in `detail`.
   - **Model choice.** In testing, `gemini-3.1-flash-lite` answered each call in about
     1–8 s, while `gemini-flash-latest` sometimes hung past 90 s under load.
-- **Not built yet:** sign-in (every request acts as the seeded demo user), in-app
+- **Not built yet:** in-app
   speech-to-text on iOS/Android (Expo Go has no speech module; the composer takes typed
   text, and the keyboard's dictation works. On web it listens via the Web Speech API),
   and a progress screen in the app (its data endpoint, `GET /v1/progress`, exists).

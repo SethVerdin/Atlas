@@ -1,3 +1,4 @@
+import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
@@ -7,6 +8,7 @@ import { BottomBar, type Panel } from '@/components/atlas/bottom-bar';
 import { ChatFeed } from '@/components/atlas/chat-feed';
 import { Composer } from '@/components/atlas/composer';
 import { ExercisesSheet } from '@/components/atlas/exercises-sheet';
+import { AtlasIcon } from '@/components/atlas/icon';
 import { MacrosSheet } from '@/components/atlas/macros-sheet';
 import { AtlasColors as C } from '@/constants/theme';
 import {
@@ -20,6 +22,7 @@ import {
   type SavedExercise,
   type Today,
 } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
 
 /** Gap between the top safe-area edge and an open sheet, so the header peeks out. */
 const SHEET_TOP_OFFSET = 48;
@@ -29,6 +32,8 @@ const errorText = (e: unknown) => (e instanceof Error ? e.message : 'Something w
 
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
+  const { signOut } = useAuth();
+  const router = useRouter();
   const [panel, setPanel] = useState<Panel | null>(null);
   const composerRef = useRef<TextInput>(null);
   const [draftText, setDraftText] = useState('');
@@ -111,7 +116,25 @@ export default function HomeScreen() {
                 Today
               </Text>
             </View>
-            <Text style={styles.brand}>ATLAS</Text>
+            <View style={styles.headerRight}>
+              <Text style={styles.brand}>ATLAS</Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Your info"
+                onPress={() => router.push('/profile')}
+                hitSlop={8}
+                style={({ pressed }) => [styles.headerButton, pressed && styles.pressed]}>
+                <AtlasIcon name="profile" size={16} color={C.textSecondary} />
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Sign out"
+                onPress={signOut}
+                hitSlop={8}
+                style={({ pressed }) => [styles.headerButton, pressed && styles.pressed]}>
+                <AtlasIcon name="signOut" size={16} color={C.textSecondary} />
+              </Pressable>
+            </View>
           </View>
 
           <ChatFeed messages={messages} sending={sending} error={chatError} onSave={save} />
@@ -172,6 +195,19 @@ const styles = StyleSheet.create({
   titleBlock: { gap: 2 },
   date: { fontSize: 13, color: C.textSecondary },
   title: { fontSize: 30, fontWeight: '700', letterSpacing: -0.5, color: C.text },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  // Round header buttons (your info, sign out).
+  headerButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: C.nav,
+    borderWidth: 1,
+    borderColor: C.border,
+  },
+  pressed: { opacity: 0.8 },
   brand: { fontSize: 15, fontWeight: '700', letterSpacing: 3, color: C.accent },
   scrim: { flex: 1, backgroundColor: C.scrim },
   bottom: { paddingHorizontal: 12, paddingTop: 8, gap: 10, backgroundColor: C.bg },

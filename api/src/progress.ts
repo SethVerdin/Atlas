@@ -43,7 +43,7 @@ export async function registerProgressRoutes(app: FastifyInstance) {
     if (!query.success) return reply.code(400).send({ error: "days must be 7 or 30" });
     const days = Number(query.data.days);
 
-    const userId = await currentUserId();
+    const userId = currentUserId(req);
     const user = await loadUser(userId);
     const timeZone = isValidTimeZone(query.data.timeZone) ? query.data.timeZone : user.timeZone;
 

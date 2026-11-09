@@ -1,8 +1,10 @@
 import Fastify from "fastify";
+import { registerAuth } from "./auth";
 import { registerChatRoutes } from "./chat";
 import { config } from "./config";
 import { db } from "./db";
 import { MigrationError, pendingMigrations } from "./migrations";
+import { registerProfileRoutes } from "./profile";
 import { registerProgressRoutes } from "./progress";
 import { registerSummaryRoutes } from "./summary";
 
@@ -17,6 +19,9 @@ app.addHook("onRequest", async (req, reply) => {
   if (req.method === "OPTIONS") return reply.code(204).send();
 });
 
+// Sign-in first: its hook rejects /v1 requests without a valid session.
+registerAuth(app);
+app.register(registerProfileRoutes);
 app.register(registerChatRoutes);
 app.register(registerSummaryRoutes);
 app.register(registerProgressRoutes);
