@@ -111,6 +111,18 @@ returned it in the same turn.
     sets, reps, weight }] }` → `{ draft }` (404 if a newer draft replaced it).
   - `GET /v1/today` and `GET /v1/exercises` (`api/src/summary.ts`) feed the Macros and
     Exercises buttons. Both take `?timeZone=`.
+  - `GET /v1/progress?days=7|30&timeZone=` (`api/src/progress.ts`): data for progress
+    charts, not used by the app yet. Covers the last 7 or 30 calendar days in the user's
+    time zone, today included (any other `days` → 400). Returns `{ days, from, to,
+    timeZone, goals, nutrition, unit, exercises }`:
+    - `nutrition`: one entry per day, oldest first, even days with nothing saved:
+      `{ date, meals, kcal, protein_g, carbs_g, fat_g }`. `meals: 0` means nothing was
+      logged that day. Compare with `goals` (the user's current goals).
+    - `exercises`: each exercise trained in the window, most recently trained first:
+      `{ exerciseId, name, category, sessions: [{ date, topWeight, reps }] }`, one
+      session per day trained. `topWeight` is that day's heaviest weight in `unit` (the
+      user's lb/kg; rows logged in the other unit are converted), and `reps` is the most
+      reps at that weight. `topWeight: null` means only bodyweight sets that day.
   - **Tools are sent.** The temporary `NO_TOOLS_NOTE` from the first version is gone.
   - **Output cap.** `maxOutputTokens` (in `context.ts`) is 4096 because it counts
     Gemini's internal thinking tokens as well as the reply. At 800, thinking (often

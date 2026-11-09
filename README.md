@@ -71,6 +71,7 @@ Atlas/
 │   │   ├── chat.ts             Chat feed: GET /v1/messages, POST /v1/chat, POST /v1/drafts/:id/save
 │   │   ├── drafts.ts           Stores drafts as status 'draft' rows; Save applies edits and marks them saved
 │   │   ├── summary.ts          GET /v1/today (Macros button), GET /v1/exercises (Exercises button)
+│   │   ├── progress.ts         GET /v1/progress: daily totals vs. goals, top weight per exercise
 │   │   ├── user.ts             Current user (the seeded demo user until sign-in exists)
 │   │   ├── db.ts, time.ts      Shared PostgreSQL pool; time-zone helpers
 │   │   ├── config.ts           Reads settings from the root .env
