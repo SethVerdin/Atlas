@@ -72,7 +72,10 @@ Atlas/
 │   │   ├── drafts.ts           Stores drafts as status 'draft' rows; Save applies edits and marks them saved
 │   │   ├── summary.ts          GET /v1/today (Macros button), GET /v1/exercises (Exercises button)
 │   │   ├── progress.ts         GET /v1/progress: daily totals vs. goals, top weight per exercise
-│   │   ├── user.ts             Current user (the seeded demo user until sign-in exists)
+│   │   ├── auth.ts             Sign-up, sign-in, sign-out; checks the session token on every /v1 route
+│   │   ├── profile.ts          GET /v1/me, POST /v1/profile (first sign-in questions)
+│   │   ├── macros.ts           Daily calorie and macro goals from the profile
+│   │   ├── user.ts             The signed-in user (from the session) and their settings
 │   │   ├── db.ts, time.ts      Shared PostgreSQL pool; time-zone helpers
 │   │   ├── config.ts           Reads settings from the root .env
 │   │   └── agent/              Gemini agent (see docs/ai-agent.md)
@@ -95,11 +98,17 @@ Atlas/
 ├── app/                        Mobile app: Expo (React Native, TypeScript)
 │   ├── src/
 │   │   ├── app/                Screens. Each file is a route (Expo Router)
-│   │   │   ├── _layout.tsx       Root layout (one stack, no tabs)
+│   │   │   ├── _layout.tsx       Root layout: picks sign-in, "About you", or Home from the session
+│   │   │   ├── sign-in.tsx       Sign in or create an account (username + password)
+│   │   │   ├── about-you.tsx     First sign-in questions, then the daily targets they give
+│   │   │   ├── profile.tsx       "Your info" (person icon on Home): change those answers
 │   │   │   └── index.tsx         Home screen: chat feed, "Chat with Atlas" composer, Macros / Exercises
-│   │   ├── components/atlas/   Home screen parts: chat feed + draft cards, composer, sheets
+│   │   ├── components/atlas/   Home screen parts (chat feed, composer, sheets), sign-in form parts,
+│   │   │                       and profile-screen.tsx (shared by about-you and profile)
 │   │   ├── components/         Other reusable UI (themed text/views, etc.)
 │   │   ├── lib/api.ts          Finds the API's address; typed calls for the endpoints the app uses
+│   │   ├── lib/auth.tsx        Session state: restore on launch, sign in / up / out
+│   │   ├── lib/session-store*  Where the session token is kept (Keychain / Keystore; localStorage on web)
 │   │   ├── constants/theme.ts  Colors (AtlasColors) and fonts
 │   │   ├── hooks/              Color scheme, theme, and speech-to-text (web only for now)
 │   │   ├── global.css          Font settings for the web version
@@ -117,6 +126,8 @@ Atlas/
 │       └── 001_initial_schema.sql  Tables: users, chat_messages, usda_foods, meals,
 │                                   meal_items, exercises, workout_logs; seeds exercises
 │                                   and a demo user
+│       ├── 002_user_accounts.sql   Usernames, sessions, and the "About you" profile
+│       └── 003_weight_kg_precision.sql  Weight to 0.01 kg so lb values round-trip
 ├── docs/
 │   ├── ai-agent.md             How the AI agent, its endpoints, and its context work
 │   ├── database.md             Every table and column, and how migrations work
@@ -199,8 +210,22 @@ Press `Ctrl+C` to stop both.
 
 ## Using the app
 
-The app has one screen, **Home**. Everything on it comes from the API and database.
-There is no sign-in yet: the API acts as a demo user that the first migration creates.
+**Sign in first.** On the first launch the app opens on the sign-in screen. Choose
+**Create account** and pick a username (3–30 letters, numbers, dots, or underscores; not
+case-sensitive) and a password (at least 8 characters). The app remembers you until you
+sign out (the icon next to ATLAS on Home) or 30 days pass.
+
+**About you** (first sign-in only): gender, age, height, weight (lb/ft or kg/cm), and a
+goal: lose weight, maintain, or gain weight. The API works out your daily calories,
+protein, carbs, and fat from these (formula in [`api/src/macros.ts`](api/src/macros.ts))
+and shows them before opening Home. To change them later, tap the person icon next to
+ATLAS on Home (**Your info**); saving recalculates the targets.
+
+**Your data is yours only.** Every request carries a session token, and the API takes the
+user ID from that token, never from the app. Every query filters by it, so one account
+can't see or change another account's chats, meals, or workouts.
+
+Then **Home**. Everything on it comes from the API and database.
 
 - **Chat with Atlas** (the box at the bottom): type what you ate or lifted, or ask a
   question, and tap the send arrow. Atlas replies in the feed above, with a meal or
@@ -243,7 +268,7 @@ default 5432). The tables come from numbered **migration files** in
   migration after it is merged**; add a new one. Details and rules:
   [Migrations](docs/database.md#migrations).
 - **Check the tables:** `docker exec -it atlas_db psql -U postgres -d atlas -c "\dt"`
-  should list `chat_messages`, `exercises`, `meal_items`, `meals`, `schema_migrations`,
+  should list `chat_messages`, `exercises`, `meal_items`, `meals`, `schema_migrations`, `sessions`,
   `usda_foods`, `users`, and `workout_logs`. See [`docs/database.md`](docs/database.md)
   for what each holds.
 - **Reset the database** (deletes all local data, then applies every migration):

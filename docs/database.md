@@ -29,14 +29,15 @@ from `.env.example` for you.
 
 ## Tables
 
-Seven tables, designed from the app mockup (Today chat, Today's macros, Saved exercises)
-and kept simple on purpose. Limits to handle later are in
-[`database-known-issues.md`](database-known-issues.md). An eighth table,
+Eight tables, designed from the app mockup (Today chat, Today's macros, Saved exercises)
+plus sign-in, and kept simple on purpose. Limits to handle later are in
+[`database-known-issues.md`](database-known-issues.md). A ninth table,
 `schema_migrations`, only records which migrations have run (see
 [Migrations](#migrations)).
 
 ```mermaid
 erDiagram
+    users ||--o{ sessions : "signs in"
     users ||--o{ chat_messages : sends
     chat_messages |o--o{ meals : "shows draft"
     chat_messages |o--o{ workout_logs : "shows draft"
@@ -49,7 +50,8 @@ erDiagram
 
 | Table | One row per | Used by (mockup) |
 | --- | --- | --- |
-| `users` | person | sign-in, time zone, lb/kg, daily goals (Today's macros) |
+| `users` | person | sign-in, "About you" answers, time zone, lb/kg, daily goals (Today's macros) |
+| `sessions` | signed-in device | checking the bearer token on every request |
 | `chat_messages` | chat message | the Today chat feed; history sent to the AI |
 | `usda_foods` | USDA food | cache of per-100 g values from `search_foods` |
 | `meals` | meal | meal cards, Today's macros meal list |
@@ -68,22 +70,41 @@ These are Postgres enum types. The database rejects any other value, so typos li
 | `meal_type` | `breakfast`, `lunch`, `dinner`, `snack` |
 | `nutrient_source` | `usda`, `estimated` |
 | `weight_unit` | `lb`, `kg` |
+| `sex` | `male`, `female`, `other` |
+| `body_goal` | `lose`, `maintain`, `gain` |
 | `exercise_category` | `push`, `pull`, `legs`, `core`, `other` |
 | `muscle` | `chest`, `front_delts`, `rear_delts`, `biceps`, `triceps`, `forearms`, `abs`, `upper_back`, `traps`, `lower_back`, `glutes`, `quads`, `hamstrings`, `calves` |
 
 ### `users`
 
-Sign-in credentials, settings, and daily goals.
+Sign-in credentials, the "About you" answers, settings, and daily goals.
 
 | Column | Type | Notes |
 | --- | --- | --- |
 | `user_id` | `SERIAL` | Primary key |
-| `email` | `VARCHAR(255)` | Required, **unique** |
-| `password_hash` | `VARCHAR(255)` | Required. Only a salted hash, never the plain password |
+| `username` | `VARCHAR(30)` | What the user signs in with. **Unique, ignoring case**. Empty only for the demo user (002) |
+| `email` | `VARCHAR(255)` | Optional since 002, **unique** |
+| `password_hash` | `VARCHAR(255)` | Required. scrypt with a random salt (`scrypt$N$r$p$salt$hash`), never the plain password |
+| `sex`, `age`, `height_cm`, `weight_kg`, `body_goal` | | The "About you" answers (002). Age 13–120, height 100–250 cm, weight 30–300 kg (to 0.01 kg since 003, so lb round-trips exactly) |
+| `profile_completed_at` | `TIMESTAMPTZ` | When "About you" was first answered. Empty = the app asks after sign-in (002) |
 | `time_zone` | `VARCHAR(64)` | Default `America/Chicago`. Decides what "today" means for this user |
-| `weight_unit` | `weight_unit` | Default `lb` |
-| `goal_kcal`, `goal_protein_g`, `goal_carbs_g`, `goal_fat_g` | `INT` | Optional daily targets (e.g. 2400 / 160 / 260 / 80) |
+| `weight_unit` | `weight_unit` | Default `lb`. Set from the units picked in "About you" |
+| `goal_kcal`, `goal_protein_g`, `goal_carbs_g`, `goal_fat_g` | `INT` | Daily targets, set from the "About you" answers (`api/src/macros.ts`) |
 | `created_at` | `TIMESTAMPTZ` | Defaults to now |
+
+### `sessions`
+
+One row per signed-in device (002). The app sends the token as
+`Authorization: Bearer <token>`, and `api/src/auth.ts` looks it up here on every `/v1`
+request.
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `session_id` | `SERIAL` | Primary key |
+| `user_id` | `INT` | Required. Foreign key to `users`; deleted with the user |
+| `token_hash` | `CHAR(64)` | SHA-256 of the token, **unique**. The token itself is never stored |
+| `created_at` | `TIMESTAMPTZ` | Defaults to now |
+| `expires_at` | `TIMESTAMPTZ` | 30 days after sign-in. Signing out deletes the row |
 
 ### `chat_messages`
 
@@ -167,7 +188,8 @@ Leg Press, Lunge, Plank), so the AI matches them instead of creating duplicates 
 issue 5).
 
 It also adds a **demo user** (`demo@atlas.local`, goals 2,400 kcal / 160 g protein /
-260 g carbs / 80 g fat). There is no sign-in yet, so the API acts as this user.
+260 g carbs / 80 g fat). It was the only user before sign-in existed. It has no password,
+so nobody can sign in as it; anything logged before sign-in stays with it.
 
 ### `workout_logs`
 
@@ -220,7 +242,9 @@ that file runs.
 ```
 database/migrations/
 ├── 001_initial_schema.sql      all tables, types, built-in exercises, demo user
-└── 002_...sql                  each later change, one file each
+├── 002_user_accounts.sql       usernames, sessions, "About you" columns
+├── 003_weight_kg_precision.sql weight_kg to 0.01 kg
+└── 004_...sql                  each later change, one file each
 ```
 
 | Command | What it does |
@@ -296,7 +320,7 @@ To check that the tables exist:
 docker exec -it atlas_db psql -U postgres -d atlas -c "\dt"
 ```
 
-You should see `chat_messages`, `exercises`, `meal_items`, `meals`, `schema_migrations`,
+You should see `chat_messages`, `exercises`, `meal_items`, `meals`, `schema_migrations`, `sessions`,
 `usda_foods`, `users`, and `workout_logs`. If you changed `DB_USER` or `DB_NAME` in
 `.env`, use those values instead of `postgres` and `atlas`.
 
@@ -308,7 +332,9 @@ The API reads the same `.env` file and connects with the `DB_HOST`, `DB_PORT`,
 
 | Code | Tables |
 | --- | --- |
-| `api/src/user.ts` | `users` (finds the demo user; units, time zone, goals) |
+| `api/src/auth.ts` | `users` (sign-up, sign-in), `sessions` (create, check, delete) |
+| `api/src/profile.ts` | `users` ("About you" answers and the goals worked out from them) |
+| `api/src/user.ts` | `users` (units, time zone, goals of the signed-in user) |
 | `api/src/chat.ts` | `chat_messages` (feed and AI history) |
 | `api/src/drafts.ts` | `meals`, `meal_items`, `workout_logs`, `exercises` (stores drafts, saves them) |
 | `api/src/summary.ts` | saved `meals` + `meal_items` (Macros), saved `workout_logs` + `exercises` (Exercises) |

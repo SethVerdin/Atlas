@@ -1,11 +1,8 @@
-// There is no sign-in yet: every request acts as the demo user seeded by
-// database/migrations/001_initial_schema.sql. When auth lands, replace
-// currentUserId with the user ID from the bearer token (it will take the request).
-// Routes and tools already scope every query by it.
+// The signed-in user. src/auth.ts checks the bearer token on every /v1 request and
+// sets req.userId; routes and tools scope every query by it.
 
+import type { FastifyRequest } from "fastify";
 import { db } from "./db";
-
-const DEMO_EMAIL = "demo@atlas.local";
 
 export interface Goals {
   kcal: number | null;
@@ -21,10 +18,10 @@ export interface UserSettings {
   goals: Goals;
 }
 
-export async function currentUserId(): Promise<number> {
-  const { rows } = await db.query<{ user_id: number }>("select user_id from users where email = $1", [DEMO_EMAIL]);
-  if (!rows.length) throw new Error(`Demo user ${DEMO_EMAIL} is missing. Run \`npm run db:migrate\`.`);
-  return rows[0].user_id;
+export function currentUserId(req: FastifyRequest): number {
+  // Only reachable without a user ID if a route skipped the auth hook by mistake.
+  if (req.userId === undefined) throw new Error(`${req.routeOptions.url} ran without a signed-in user.`);
+  return req.userId;
 }
 
 export async function loadUser(userId: number): Promise<UserSettings> {

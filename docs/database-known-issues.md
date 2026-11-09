@@ -19,9 +19,11 @@ are **not** handled by the schema and need care in code or a later change.
 2. **Users seeing each other's data.** Every query must filter by the user ID taken from
    the login token, never by an ID sent from the app or the AI.
    *Status:* every query filters by the current user's ID, which comes from
-   `api/src/user.ts`, never from the app or the AI. Until sign-in exists, that is always
-   the demo user.
-   *Check:* a test that user B gets nothing back for user A's meals and workouts.
+   the session token (`api/src/auth.ts` sets it; `currentUserId(req)` in
+   `api/src/user.ts` reads it), never from the app or the AI. Requests without a valid
+   token get 401.
+   *Checked by hand:* user B gets an empty feed and a 404 when saving user A's draft, and
+   A's draft stays unsaved. *Later:* an automated test once the project has tests.
 
 3. **Double-tapped Save.** The app should disable Save while a save is in progress. Save
    should only change a draft's `status` to `saved`, which is safe to repeat, rather

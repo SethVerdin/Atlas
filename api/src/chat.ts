@@ -45,8 +45,8 @@ async function withDrafts(userId: number, rows: MessageRow[]) {
 }
 
 export async function registerChatRoutes(app: FastifyInstance) {
-  app.get("/v1/messages", async () => {
-    const userId = await currentUserId();
+  app.get("/v1/messages", async (req) => {
+    const userId = currentUserId(req);
     const { rows } = await db.query<MessageRow>(
       `select * from (
          select message_id, role, text, created_at from chat_messages
@@ -62,7 +62,7 @@ export async function registerChatRoutes(app: FastifyInstance) {
     if (!parsed.success) {
       return reply.code(400).send({ error: "Invalid request", issues: parsed.error.issues.map((i) => i.message) });
     }
-    const userId = await currentUserId();
+    const userId = currentUserId(req);
     const user = await loadUser(userId);
     const { message } = parsed.data;
     const timeZone = isValidTimeZone(parsed.data.timeZone) ? parsed.data.timeZone : user.timeZone;
@@ -140,7 +140,7 @@ export async function registerChatRoutes(app: FastifyInstance) {
     if (!Number.isInteger(messageId) || !edits.success) {
       return reply.code(400).send({ error: "Invalid request" });
     }
-    const userId = await currentUserId();
+    const userId = currentUserId(req);
     const draft = await saveDraft(userId, messageId, edits.data);
     if (!draft) return reply.code(404).send({ error: "This draft was replaced by a newer one." });
     return { draft };

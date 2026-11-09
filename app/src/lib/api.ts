@@ -79,6 +79,20 @@ export type SavedExercise = {
   when: string;
 };
 
+export type Sex = 'male' | 'female' | 'other';
+export type BodyGoal = 'lose' | 'maintain' | 'gain';
+
+/** Answers to the first sign-in questions. Always metric; `units` is how weights are shown. */
+export type Profile = { sex: Sex; age: number; heightCm: number; weightKg: number; goal: BodyGoal };
+
+/** The signed-in user (api/src/profile.ts). `profile` is null until the first sign-in questions are answered. */
+export type Me = {
+  username: string;
+  units: 'lb' | 'kg';
+  profile: Profile | null;
+  goals: Today['goals'];
+};
+
 /** Changes the user made to a draft before tapping Save. */
 export type DraftEdits = {
   items?: { itemId: number; grams: number }[];
@@ -95,12 +109,26 @@ const timeZone = () => {
   }
 };
 
+// The session token sent with every request (set by lib/auth.tsx), and what to do
+// when the API says it is no longer valid (sign out).
+let sessionToken: string | null = null;
+let onUnauthorized: (() => void) | null = null;
+
+export function setSession(token: string | null, whenRejected: (() => void) | null = null) {
+  sessionToken = token;
+  onUnauthorized = whenRejected;
+}
+
 async function request<T>(path: string, body?: unknown): Promise<T> {
+  const headers: Record<string, string> = {};
+  if (body !== undefined) headers['Content-Type'] = 'application/json';
+  if (sessionToken) headers.Authorization = `Bearer ${sessionToken}`;
+
   let res: Response;
   try {
     res = await fetch(`${API_URL}${path}`, {
       method: body === undefined ? 'GET' : 'POST',
-      headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
+      headers,
       body: body === undefined ? undefined : JSON.stringify(body),
     });
   } catch {
@@ -108,6 +136,8 @@ async function request<T>(path: string, body?: unknown): Promise<T> {
   }
 
   const data = (await res.json().catch(() => ({}))) as T & { error?: string };
+  // A signed-in request was rejected: the session expired or was signed out elsewhere.
+  if (res.status === 401 && sessionToken) onUnauthorized?.();
   if (!res.ok) throw new Error(data.error ?? `Something went wrong (HTTP ${res.status}).`);
   return data;
 }
@@ -138,4 +168,29 @@ export async function getToday(): Promise<Today> {
 
 export async function getExercises(): Promise<SavedExercise[]> {
   return (await request<{ exercises: SavedExercise[] }>(`/v1/exercises${tzQuery()}`)).exercises;
+}
+
+// ---- Account ----
+
+type SignedIn = { token: string; user: Me };
+
+export async function register(username: string, password: string): Promise<SignedIn> {
+  return request<SignedIn>('/v1/auth/register', { username, password });
+}
+
+export async function login(username: string, password: string): Promise<SignedIn> {
+  return request<SignedIn>('/v1/auth/login', { username, password });
+}
+
+export async function logout(): Promise<void> {
+  await request('/v1/auth/logout', {});
+}
+
+export async function getMe(): Promise<Me> {
+  return request<Me>('/v1/me');
+}
+
+/** Saves the first sign-in answers. The API works out the daily goals from them. */
+export async function saveProfile(profile: Profile, units: Me['units']): Promise<Me> {
+  return request<Me>('/v1/profile', { ...profile, units });
 }
