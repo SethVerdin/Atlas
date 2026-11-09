@@ -171,9 +171,10 @@ screen shows "AI is not set up." The app finds the API on its own: on a phone it
 your computer's address on port 3000. To point it somewhere else, set
 `EXPO_PUBLIC_API_URL` in `app/.env`.
 
-**Database created before the home screen was wired up?** Reset it once so it has the
-new tables and the demo user: `docker compose down -v`, then `npm run db:up` (this
-deletes local data). Otherwise the feed shows an error like "Demo user ... is missing".
+**Database created from an older `schema.sql`?** The API warns "Local database is out of
+date" when it starts, `/health` answers `{"ok":false,"db":"outdated",...}`, and the app
+shows errors such as "Something went wrong (HTTP 500)". Run `npm run db:reset` once to
+rebuild it with the current tables and the demo user (this deletes local data).
 
 Press `Ctrl+C` to stop both.
 
@@ -183,6 +184,7 @@ Press `Ctrl+C` to stop both.
 | `npm run dev` | Start the API and the app |
 | `npm run dev:api` / `npm run dev:app` | Start only one of them |
 | `npm run db:up` / `npm run db:down` | Start or stop the database |
+| `npm run db:reset` | Delete the local database and rebuild it from `schema.sql` |
 | `npm run lint` | Lint the API and the app (same as CI) |
 | `npm run typecheck` | Type-check the API and the app (same as CI) |
 
@@ -230,9 +232,9 @@ database is created.
 - **Check the tables:** `docker exec -it atlas_db psql -U postgres -d atlas -c "\dt"`
   should list `chat_messages`, `exercises`, `meal_items`, `meals`, `usda_foods`, `users`,
   and `workout_logs`. See [`docs/database.md`](docs/database.md) for what each holds.
-- **Reset the database** (deletes all local data, then reloads `schema.sql` on the next
-  start): `docker compose down -v`, then `npm run db:up`. Do this after changing
-  `schema.sql` or `DB_PASSWORD`.
+- **Reset the database** (deletes all local data and reloads `schema.sql`):
+  `npm run db:reset`. Do this after `schema.sql` or `DB_PASSWORD` changes, including
+  when you pull someone else's schema change.
 - **Database tools** (DBeaver, pgAdmin): host `localhost`, port `5433`, database `atlas`,
   user `postgres`, and the password from your `.env`.
 
@@ -260,7 +262,7 @@ Node 24 (from `.nvmrc`):
 | `app` | `npm ci` | Same as above, for the app |
 | | Lint (`expo lint`) | Mistakes plus React rules |
 | | Type-check (`tsc --noEmit`) | TypeScript type errors |
-| | `expo-doctor` | Package versions that don't match the Expo SDK; config problems |
+| | `expo-doctor` (offline) | Package versions that don't match the installed Expo SDK; config problems |
 
 If any step fails, that check turns red on the PR. Click **Details** next to it to see
 the log. When both checks are green, the PR is ready for review.
@@ -302,6 +304,11 @@ GitHub only blocks merging once the checks are marked required:
   the Expo SDK; don't use plain `npm install` there.
 - Commit the updated `package-lock.json` together with `package.json`. Never edit a
   lockfile by hand.
+- **Expo patch updates:** Expo publishes patch releases often. CI runs `expo-doctor`
+  offline, so it checks the app against the Expo SDK in the lockfile and doesn't fail
+  just because a newer patch came out. To pick up new patches, run
+  `npx expo install --fix` inside `app/` and commit both files. `npx expo-doctor` (online)
+  lists what's available.
 - **Lockfile merge conflict:** keep either version, run `npm install` in that folder to
   regenerate it, and commit the result.
 - **CI fails at `npm ci` with "not in sync"**: someone changed `package.json` without

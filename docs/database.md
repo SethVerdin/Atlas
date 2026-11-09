@@ -222,7 +222,7 @@ change (see below).
 | --- | --- |
 | Start the database | `npm run db:up` |
 | Stop it (data is kept) | `npm run db:down` |
-| Reset it (**deletes all local data**) | `docker compose down -v`, then `npm run db:up` |
+| Reset it (**deletes all local data**) | `npm run db:reset` |
 
 Reset the database after changing `schema.sql` or `DB_PASSWORD`. The password is also
 only applied when the database is first created.
@@ -231,9 +231,14 @@ only applied when the database is first created.
 `food_logs`). That is harmless on a fresh database, but running the file by hand against
 a database that has data **deletes that data**.
 
-**If your local database was created before this schema,** it is missing tables or the
-demo user (the app then shows "Demo user demo@atlas.local is missing"). Reset it once to
-get the new tables.
+`npm run db:reset` runs `docker compose down -v` (deletes the `pgdata` volume) and then
+starts the database again, which reloads `schema.sql`.
+
+**If your local database was created from an older `schema.sql`,** it is missing tables
+or the demo user. The API checks for its tables when it starts and logs "Local database
+is out of date (missing tables: ...)", and `/health` reports `"db":"outdated"` (see
+[How the API connects](#how-the-api-connects)). Run `npm run db:reset` once to get the
+new tables.
 
 To check that the tables exist:
 
@@ -261,10 +266,14 @@ The API reads the same `.env` file and connects with the `DB_HOST`, `DB_PORT`,
 | `api/src/agent/usda.ts` | `usda_foods` (USDA cache) |
 | `api/src/agent/runTool.ts` | `exercises` (`find_exercise`), saved meals and workouts (summary and progress tools) |
 
-`GET /health` runs a trivial query to confirm PostgreSQL is reachable:
+`GET /health` checks that PostgreSQL is reachable and has every table the API uses
+(`REQUIRED_TABLES` in `api/src/db.ts`; add new tables there when you add them to
+`schema.sql`):
 
-- Database reachable: `{"ok":true,"db":"up"}`
+- Database reachable and up to date: `{"ok":true,"db":"up"}`
 - Database unreachable: HTTP 503 with `{"ok":false,"db":"down"}`
+- Database missing tables: HTTP 503 with `{"ok":false,"db":"outdated","missing":[...],"fix":"..."}`.
+  Run `npm run db:reset`.
 
 With `npm run dev` running, open http://localhost:3000/health to check.
 

@@ -1,7 +1,7 @@
 import Fastify from "fastify";
 import { registerChatRoutes } from "./chat";
 import { config } from "./config";
-import { db } from "./db";
+import { db, missingTables } from "./db";
 import { registerSummaryRoutes } from "./summary";
 
 const app = Fastify({ logger: true });
@@ -18,22 +18,34 @@ app.addHook("onRequest", async (req, reply) => {
 app.register(registerChatRoutes);
 app.register(registerSummaryRoutes);
 
-// Reports whether the API is up and can reach PostgreSQL.
+const OUTDATED_HINT = "Run `npm run db:reset` to rebuild it from database/schema.sql (deletes local data).";
+
+// Reports whether the API is up, can reach PostgreSQL, and has every table it needs.
 app.get("/health", async (_req, reply) => {
+  let missing: string[];
   try {
-    await db.query("select 1");
-    return { ok: true, db: "up" };
+    missing = await missingTables();
   } catch (err) {
     app.log.error(err);
     return reply.code(503).send({ ok: false, db: "down" });
   }
+  if (missing.length) return reply.code(503).send({ ok: false, db: "outdated", missing, fix: OUTDATED_HINT });
+  return { ok: true, db: "up" };
 });
 
 app.addHook("onClose", async () => {
   await db.end();
 });
 
-app.listen({ port: config.port, host: config.host }).catch((err) => {
+// An out-of-date local database makes routes fail with HTTP 500, so say why at startup.
+async function warnIfSchemaOutdated() {
+  const missing = await missingTables().catch(() => []); // database down: /health reports that
+  if (missing.length) {
+    app.log.warn(`Local database is out of date (missing tables: ${missing.join(", ")}). ${OUTDATED_HINT}`);
+  }
+}
+
+app.listen({ port: config.port, host: config.host }).then(warnIfSchemaOutdated, (err) => {
   app.log.error(err);
   process.exit(1);
 });
