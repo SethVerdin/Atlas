@@ -3,7 +3,11 @@ import { Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-na
 
 import { AtlasIcon } from '@/components/atlas/icon';
 import { AtlasColors as C } from '@/constants/theme';
+import { useAutoGrow } from '@/hooks/use-auto-grow';
 import { useSpeech } from '@/hooks/use-speech';
+
+const INPUT_ID = 'atlas-composer';
+const MAX_INPUT_HEIGHT = 120; // about 5 lines, then it scrolls
 
 type Props = {
   value: string;
@@ -21,7 +25,9 @@ type Props = {
 export const Composer = forwardRef<TextInput, Props>(function Composer({ value, onChangeText, onSend, busy }, ref) {
   const speech = useSpeech();
   const [hint, setHint] = useState(false);
+  const [focused, setFocused] = useState(false);
   const canSend = value.trim().length > 0 && !busy;
+  useAutoGrow(INPUT_ID, value, MAX_INPUT_HEIGHT);
 
   const send = () => {
     if (!canSend) return;
@@ -41,10 +47,12 @@ export const Composer = forwardRef<TextInput, Props>(function Composer({ value, 
   };
 
   return (
-    <View style={styles.box}>
+    <View style={[styles.box, focused && styles.boxFocused]}>
       <TextInput
         ref={ref}
         value={value}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
         onChangeText={(t) => {
           setHint(false);
           onChangeText(t);
@@ -52,6 +60,7 @@ export const Composer = forwardRef<TextInput, Props>(function Composer({ value, 
         placeholder={speech.listening ? 'Listening…' : 'Chat with Atlas'}
         placeholderTextColor={C.textSecondary}
         accessibilityLabel="Chat with Atlas"
+        nativeID={INPUT_ID} // web: grows with the text, scroll bar hidden (global.css)
         multiline
         // Browsers give a multi-line box 2 rows by default; start at one like native.
         numberOfLines={Platform.OS === 'web' ? 1 : undefined}
@@ -101,14 +110,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     gap: 4,
   },
+  boxFocused: { borderColor: C.accent },
   input: {
     fontSize: 16,
     lineHeight: 22,
     color: C.text,
     minHeight: 24,
-    maxHeight: 120,
+    maxHeight: MAX_INPUT_HEIGHT,
     padding: 0,
     textAlignVertical: 'top',
+    // No browser focus ring on web: the box's lime border shows focus instead.
+    outlineWidth: 0,
   },
   row: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   hint: { flex: 1, fontSize: 12, color: C.textSecondary },

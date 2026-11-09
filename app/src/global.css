@@ -7,3 +7,12 @@
   --font-rounded: 'SF Pro Rounded', 'Hiragino Maru Gothic ProN', Meiryo, 'MS PGothic', sans-serif;
   --font-serif: Georgia, 'Times New Roman', serif;
 }
+
+/* The chat box still scrolls once a message passes 5 lines; only the bar is hidden,
+   like the feed and sheets (showsVerticalScrollIndicator doesn't reach a textarea). */
+#atlas-composer {
+  scrollbar-width: none;
+}
+#atlas-composer::-webkit-scrollbar {
+  display: none;
+}
